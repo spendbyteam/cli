@@ -1,0 +1,38 @@
+{
+  "name": "spendbyteam",
+  "version": "0.1.0",
+  "description": "Connect Claude Code to SpendByTeam: metrics-only OpenTelemetry + a tiny branch/ticket context hook.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "spendbyteam": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "hook/hook.sh",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && chmod +x dist/cli.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run test:unit && npm run test:hook",
+    "test:unit": "vitest run",
+    "test:hook": "bash test/hook.test.sh",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "keywords": [
+    "claude-code",
+    "opentelemetry",
+    "cost",
+    "spendbyteam"
+  ],
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^5.1.0"
+  }
+}
