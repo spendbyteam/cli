@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "description": "Connect Claude Code to SpendByTeam: metrics-only OpenTelemetry + a tiny branch/ticket context hook.",
   "license": "MIT",
+  "homepage": "https://spendbyteam.com/docs/install",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/spendbyteam/cli.git"
+  },
+  "bugs": {
+    "email": "support@spendbyteam.com"
+  },
   "type": "module",
   "bin": {
     "spendbyteam": "dist/cli.js"
