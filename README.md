@@ -1,6 +1,43 @@
 # spendbyteam
 
-Connect [Claude Code](https://code.claude.com) to **SpendByTeam** and see AI coding spend per team, project and client.
+See what [Claude Code](https://code.claude.com) costs, per project, model, branch or day. Then share it with your team on **SpendByTeam**.
+
+## See your own spend (no account needed)
+
+```bash
+npx spendbyteam report
+```
+
+```
+Claude Code spend on this machine  2026-10-20 → 2026-11-18
+At API list prices. On a Pro, Max or Team seat you pay a flat fee; this is what the same tokens cost on the API.
+
+Project            Cost  Share  Sessions  Tokens  Top model
+checkout-api    $412.80    38%        41  980.2M  opus-5-5
+web             $301.15    28%        33  702.6M  opus-5-5
+infra           $118.40    11%         9  250.1M  sonnet-5-5
+…
+Total         $1,086.20             112    2.4B
+```
+
+`report` reads the session logs Claude Code already keeps on your machine (`~/.claude/projects`, or `$CLAUDE_CONFIG_DIR`). It works offline and **sends nothing anywhere**. Costs use Anthropic's API list prices, including cache reads, 5-minute and 1-hour cache writes, and fast mode.
+
+| Option | |
+|---|---|
+| `--days=N` | Last N days, including today (default 30) |
+| `--all` | Everything in the logs |
+| `--by=project\|model\|branch\|day` | How to group (default `project`; sub-folders of a git repo count as one project) |
+| `--json` | Machine-readable output |
+
+## Track it for the whole team
+
+```bash
+npx spendbyteam connect
+```
+
+`connect` prints a short code and opens your browser. Sign up (free for 3 developers) or log in, check the code matches, and click **Connect**. The panel issues an ingest token for this machine and the CLI installs it, so there is nothing to copy. Before you approve, the only thing sent is this machine's name, so the page can show which machine is asking. Use `--no-browser` on a server or over SSH.
+
+Already have a token, or setting up many machines? Use `init` directly:
 
 ```bash
 npx spendbyteam init --token=sbt_ing_xxxxxxxx

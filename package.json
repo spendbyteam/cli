@@ -1,7 +1,7 @@
 {
   "name": "spendbyteam",
-  "version": "0.1.0",
-  "description": "Connect Claude Code to SpendByTeam: metrics-only OpenTelemetry + a tiny branch/ticket context hook.",
+  "version": "0.2.0",
+  "description": "See what Claude Code costs per project, model, branch or day (offline), and connect it to SpendByTeam for your team.",
   "license": "MIT",
   "homepage": "https://spendbyteam.com/docs/install",
   "repository": {
@@ -36,6 +36,8 @@
     "claude-code",
     "opentelemetry",
     "cost",
+    "usage",
+    "tokens",
     "spendbyteam"
   ],
   "devDependencies": {

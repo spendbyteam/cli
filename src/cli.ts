@@ -6,13 +6,17 @@ import { uninstall } from './uninstall.js';
 import { status } from './status.js';
 import { doctor } from './doctor.js';
 import { managedSettingsJson } from './managed.js';
+import { report, GROUPS, type GroupBy } from './report.js';
+import { connect } from './connect.js';
 import { UsageError } from './env.js';
 import { JsonFileError } from './fsutil.js';
 import { consoleLogger } from './log.js';
 
-const HELP = `spendbyteam — connect Claude Code to SpendByTeam (metrics only, no prompts or code)
+const HELP = `spendbyteam — see and share what Claude Code costs (metrics only, no prompts or code)
 
 Usage:
+  npx spendbyteam report [--days=30 | --all] [--by=project|model|branch|day] [--json]
+  npx spendbyteam connect [--team-id=ID] [--no-browser]
   npx spendbyteam init --token=sbt_ing_... [--endpoint=URL] [--team-id=ID] [--no-ping]
   npx spendbyteam uninstall
   npx spendbyteam status
@@ -20,6 +24,9 @@ Usage:
   npx spendbyteam print-managed --token=sbt_ing_... [--endpoint=URL] [--team-id=ID]
 
 Commands:
+  report         What Claude Code cost on this machine, per project, model, branch or day, at API list
+                 prices. Reads the local session logs only: works offline, no account or token needed.
+  connect        Sign up or log in in the browser, approve this machine, and set it up: no token to copy.
   init           Merge the OTel env + context hook into ~/.claude/settings.json (backup: settings.json.bak),
                  write ~/.spendbyteam/config.json (mode 600) and ~/.spendbyteam/hook.sh. Safe to re-run.
   uninstall      Undo everything init did (restores env values that existed before).
@@ -32,6 +39,12 @@ Options:
   --endpoint     Ingest endpoint (default https://ingest.spendbyteam.com).
   --team-id      Optional static team id, sent as OTEL_RESOURCE_ATTRIBUTES=team.id=<id>.
   --no-ping      Skip the GET /v1/ping connectivity test.
+  --days         report: how many days back to look, including today (default 30).
+  --all          report: everything in the logs.
+  --by           report: group by project (default), model, branch or day.
+  --json         report: print JSON instead of a table.
+  --no-browser   connect: print the approval link instead of opening a browser.
+  --app-url      connect: panel URL (default https://app.spendbyteam.com).
   -h, --help     Show this help.
   -v, --version  Show version.
 `;
@@ -51,6 +64,12 @@ export async function main(argv: string[]): Promise<number> {
       endpoint: { type: 'string' },
       'team-id': { type: 'string' },
       'no-ping': { type: 'boolean', default: false },
+      days: { type: 'string' },
+      all: { type: 'boolean', default: false },
+      by: { type: 'string' },
+      json: { type: 'boolean', default: false },
+      'no-browser': { type: 'boolean', default: false },
+      'app-url': { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },
       version: { type: 'boolean', short: 'v', default: false },
     },
@@ -68,6 +87,17 @@ export async function main(argv: string[]): Promise<number> {
   const envOpts = { token: values.token ?? '', endpoint: values.endpoint, teamId: values['team-id'] };
 
   switch (cmd) {
+    case 'report': {
+      const days = values.days === undefined ? undefined : Number(values.days);
+      if (values.by !== undefined && !GROUPS.includes(values.by as GroupBy)) {
+        throw new UsageError(`--by must be one of: ${GROUPS.join(', ')}.`);
+      }
+      await report({ days, all: values.all, by: values.by as GroupBy | undefined, json: values.json });
+      return 0;
+    }
+    case 'connect':
+      await connect({ appUrl: values['app-url'], teamId: values['team-id'], open: !values['no-browser'], ping: !values['no-ping'] });
+      return 0;
     case 'init':
       await init({ ...envOpts, ping: !values['no-ping'] });
       return 0;
