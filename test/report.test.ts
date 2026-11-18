@@ -124,6 +124,37 @@ describe('report', () => {
     expect((await buildReport({ now: NOW, by: 'day' })).rows.map((x) => x.key)).toEqual(['2026-11-17', '2026-11-18']);
   });
 
+  it('groups by session, with start time, project and where the tokens went', async () => {
+    const repo = path.join(ctx.home, 'code', 'api');
+    fs.mkdirSync(path.join(repo, '.git'), { recursive: true });
+    writeLog(ctx.home, 'a.jsonl', [
+      assistant({ id: 'm1', session: 'big', cwd: repo, at: '2026-11-18T08:00:00Z', usage: { input_tokens: 10, output_tokens: 1000, cache_read_input_tokens: 2_000_000, cache_creation_input_tokens: 500 } }),
+      assistant({ id: 'm2', session: 'big', cwd: repo, at: '2026-11-18T08:05:00Z', usage: { input_tokens: 5, output_tokens: 2000, cache_read_input_tokens: 3_000_000 } }),
+      assistant({ id: 'm3', session: 'small', cwd: repo, at: '2026-11-18T09:00:00Z', usage: { input_tokens: 100, output_tokens: 10 } }),
+    ]);
+    const r = await buildReport({ now: NOW, by: 'session' });
+
+    expect(r.rows.map((x) => [x.key, x.requests, x.project])).toEqual([
+      ['big', 2, 'api'],
+      ['small', 1, 'api'],
+    ]);
+    expect(r.rows[0]!.split).toEqual({ input: 15, output: 3000, cacheWrite: 500, cacheRead: 5_000_000 });
+    expect(r.rows[0]!.startedAt).toBe('2026-11-18T08:00:00.000Z');
+
+    const text = renderReport(r);
+    expect(text).toMatch(/Started\s+Project\s+Cost\s+Turns\s+Input\s+Output\s+Cache write\s+Cache read\s+Model/);
+    expect(text).toContain('2 sessions');
+  });
+
+  it('reports reading progress up to the total', async () => {
+    writeLog(ctx.home, 'a.jsonl', [assistant({ id: 'm1' })]);
+    const seen: [number, number][] = [];
+    await buildReport({ now: NOW, onProgress: (done, total) => seen.push([done, total]) });
+    const total = seen.at(-1)![1];
+    expect(total).toBeGreaterThan(0);
+    expect(seen.at(-1)).toEqual([total, total]);
+  });
+
   it('lists unknown models instead of guessing a price, and skips synthetic messages', async () => {
     writeLog(ctx.home, 'a.jsonl', [assistant({ id: 'm1', model: 'some-other-model' }), assistant({ id: 'm2', model: '<synthetic>' })]);
     const r = await buildReport({ now: NOW });

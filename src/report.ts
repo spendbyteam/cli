@@ -10,8 +10,8 @@ import { UsageError } from './env.js';
  * is sent anywhere and no account or token is needed.
  */
 
-export type GroupBy = 'project' | 'model' | 'branch' | 'day';
-export const GROUPS: GroupBy[] = ['project', 'model', 'branch', 'day'];
+export type GroupBy = 'project' | 'model' | 'branch' | 'day' | 'session';
+export const GROUPS: GroupBy[] = ['project', 'model', 'branch', 'day', 'session'];
 
 export interface ReportOptions {
   days?: number;
@@ -20,12 +20,25 @@ export interface ReportOptions {
   json?: boolean;
   dirs?: string[];
   now?: Date;
+  /** Called while reading, with bytes read so far and the total (for a progress line). */
+  onProgress?: (done: number, total: number) => void;
 }
+
+/** Where the tokens went: fresh input, output, cache writes (5m + 1h) and cache reads. */
+export interface TokenSplit {
+  input: number;
+  output: number;
+  cacheWrite: number;
+  cacheRead: number;
+}
+
+const emptySplit = (): TokenSplit => ({ input: 0, output: 0, cacheWrite: 0, cacheRead: 0 });
 
 interface Request {
   model: string;
   cost: number | undefined;
   tokens: number;
+  split: TokenSplit;
   session: string;
   project: string;
   branch: string;
@@ -40,7 +53,11 @@ export interface Row {
   requests: number;
   sessions: number;
   tokens: number;
+  split: TokenSplit;
   topModel: string;
+  /** --by=session: when the session started (ISO) and its project. */
+  startedAt?: string;
+  project?: string;
 }
 
 export interface Report {
@@ -125,11 +142,19 @@ async function* usageLines(file: string): AsyncGenerator<string> {
   }
 }
 
-async function readRequests(files: string[], since: number | null): Promise<Map<string, Request>> {
+async function readRequests(
+  files: string[],
+  since: number | null,
+  onProgress?: (done: number, total: number) => void,
+): Promise<Map<string, Request>> {
   const requests = new Map<string, Request>();
   const project = projectResolver();
-  for (const file of files) {
-    if (since !== null && fs.statSync(file).mtimeMs < since) continue;
+  const todo = files.map((file) => ({ file, stat: fs.statSync(file) })).filter(({ stat }) => since === null || stat.mtimeMs >= since);
+  const totalBytes = todo.reduce((n, f) => n + f.stat.size, 0);
+  let doneBytes = 0;
+  for (const { file, stat } of todo) {
+    onProgress?.(doneBytes, totalBytes);
+    doneBytes += stat.size;
     for await (const line of usageLines(file)) {
       let row: any;
       try {
@@ -150,6 +175,12 @@ async function readRequests(files: string[], since: number | null): Promise<Map<
         cost: costOf(model, usage),
         tokens:
           (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0),
+        split: {
+          input: usage.input_tokens ?? 0,
+          output: usage.output_tokens ?? 0,
+          cacheWrite: usage.cache_creation_input_tokens ?? 0,
+          cacheRead: usage.cache_read_input_tokens ?? 0,
+        },
         session: row.sessionId ?? file,
         project: project(row.cwd),
         branch: row.gitBranch && row.gitBranch !== 'HEAD' ? row.gitBranch : '(no branch)',
@@ -158,6 +189,7 @@ async function readRequests(files: string[], since: number | null): Promise<Map<
       });
     }
   }
+  onProgress?.(totalBytes, totalBytes);
   return requests;
 }
 
@@ -175,9 +207,12 @@ export async function buildReport(opts: ReportOptions = {}): Promise<Report> {
 
   const dirs = opts.dirs ?? logDirs();
   const files = dirs.flatMap((d) => jsonlFiles(d));
-  const requests = await readRequests(files, since);
+  const requests = await readRequests(files, since, opts.onProgress);
 
-  const groups = new Map<string, { cost: number; requests: number; sessions: Set<string>; tokens: number; models: Map<string, number> }>();
+  const groups = new Map<
+    string,
+    { cost: number; requests: number; sessions: Set<string>; tokens: number; split: TokenSplit; models: Map<string, number>; first: number; projects: Map<string, number> }
+  >();
   const unpriced = new Map<string, number>();
   const sessions = new Set<string>();
   let total = 0;
@@ -189,11 +224,26 @@ export async function buildReport(opts: ReportOptions = {}): Promise<Report> {
       continue;
     }
     const key = by === 'model' ? r.model : r[by];
-    const g = groups.get(key) ?? { cost: 0, requests: 0, sessions: new Set<string>(), tokens: 0, models: new Map<string, number>() };
+    const g = groups.get(key) ?? {
+      cost: 0,
+      requests: 0,
+      sessions: new Set<string>(),
+      tokens: 0,
+      split: emptySplit(),
+      models: new Map<string, number>(),
+      first: Infinity,
+      projects: new Map<string, number>(),
+    };
     g.cost += r.cost;
     g.requests += 1;
     g.sessions.add(r.session);
     g.tokens += r.tokens;
+    g.split.input += r.split.input;
+    g.split.output += r.split.output;
+    g.split.cacheWrite += r.split.cacheWrite;
+    g.split.cacheRead += r.split.cacheRead;
+    g.first = Math.min(g.first, r.at);
+    g.projects.set(r.project, (g.projects.get(r.project) ?? 0) + r.cost);
     g.models.set(r.model, (g.models.get(r.model) ?? 0) + r.cost);
     groups.set(key, g);
     sessions.add(r.session);
@@ -210,7 +260,11 @@ export async function buildReport(opts: ReportOptions = {}): Promise<Report> {
       requests: g.requests,
       sessions: g.sessions.size,
       tokens: g.tokens,
+      split: g.split,
       topModel: [...g.models.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '',
+      ...(by === 'session'
+        ? { startedAt: new Date(g.first).toISOString(), project: [...g.projects.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '' }
+        : {}),
     }))
     .sort((a, b) => (by === 'day' ? a.key.localeCompare(b.key) : b.cost - a.cost));
 
@@ -234,7 +288,7 @@ const style = (code: string) => (s: string) => (process.stdout.isTTY && !process
 const bold = style('1');
 const dim = style('2');
 
-const HEADINGS: Record<GroupBy, string> = { project: 'Project', model: 'Model', branch: 'Branch', day: 'Day' };
+const HEADINGS: Record<GroupBy, string> = { project: 'Project', model: 'Model', branch: 'Branch', day: 'Day', session: 'Session' };
 const MAX_ROWS = 15;
 export const CTA_URL = 'https://spendbyteam.com/?utm_source=cli&utm_medium=report';
 
@@ -253,6 +307,8 @@ export function renderReport(r: Report): string {
     );
     return out.join('\n');
   }
+
+  if (r.by === 'session') return renderSessions(r, out);
 
   const shown = r.rows.slice(0, MAX_ROWS);
   const rest = r.rows.slice(MAX_ROWS);
@@ -288,6 +344,10 @@ export function renderReport(r: Report): string {
   out.push(dim('─'.repeat(widths.reduce((n, w) => n + w + 2, -2))));
   out.push(bold(fmt(totalRow)));
 
+  return finish(r, out);
+}
+
+function finish(r: Report, out: string[]): string {
   if (r.unpriced.length) {
     out.push('');
     out.push(dim(`Not priced (unknown model): ${r.unpriced.map((u) => `${u.model} × ${u.requests}`).join(', ')}`));
@@ -298,8 +358,76 @@ export function renderReport(r: Report): string {
   return out.join('\n');
 }
 
+function localDateTime(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** --by=session: the most expensive sessions, with where their tokens went. */
+function renderSessions(r: Report, out: string[]): string {
+  const shown = r.rows.slice(0, MAX_ROWS);
+  const header = ['Started', 'Project', 'Cost', 'Turns', 'Input', 'Output', 'Cache write', 'Cache read', 'Model'];
+  const body = shown.map((row) => [
+    localDateTime(row.startedAt!),
+    row.project ?? '',
+    usd(row.cost),
+    String(row.requests),
+    compact(row.split.input),
+    compact(row.split.output),
+    compact(row.split.cacheWrite),
+    compact(row.split.cacheRead),
+    shortModel(row.topModel),
+  ]);
+  const left = new Set([0, 1, 8]);
+  const projectWidth = Math.min(28, Math.max(...[header, ...body].map((t) => t[1]!.length)));
+  const widths = header.map((_, i) => (i === 1 ? projectWidth : Math.max(...[header, ...body].map((t) => t[i]!.length))));
+  const fmt = (cells: string[]) =>
+    cells
+      .map((c, i) => {
+        const cell = i === 1 && c.length > projectWidth ? `${c.slice(0, projectWidth - 1)}…` : c;
+        return left.has(i) ? cell.padEnd(widths[i]!) : cell.padStart(widths[i]!);
+      })
+      .join('  ')
+      .trimEnd();
+
+  out.push(bold(fmt(header)));
+  for (const cells of body) out.push(fmt(cells));
+  out.push(dim('─'.repeat(widths.reduce((n, w) => n + w + 2, -2))));
+  const rest = r.rows.length - shown.length;
+  out.push(`${bold(`${r.rows.length} sessions, ${usd(r.total.cost)}`)}${rest > 0 ? dim(`  (top ${shown.length} shown; --json for all)`) : ''}`);
+  out.push(dim('Each turn re-sends the conversation so far, mostly as cheap cache reads: long sessions grow fast. /clear or /compact resets that.'));
+  return finish(r, out);
+}
+
+/** A "Reading logs… 42%" line on stderr while reading, only on a terminal and never with --json. */
+function progressLine(): { onProgress?: ReportOptions['onProgress']; clear: () => void } {
+  if (!process.stderr.isTTY) return { clear: () => {} };
+  let shown = false;
+  let last = -1;
+  return {
+    onProgress: (done, total) => {
+      if (total < 50_000_000) return; // small log folders finish before a line is worth showing
+      const pct = Math.floor((done / total) * 100);
+      if (pct === last) return;
+      last = pct;
+      shown = true;
+      process.stderr.write(`\r\x1b[2KReading ${(total / 1e9).toFixed(1)} GB of Claude Code logs… ${pct}%`);
+    },
+    clear: () => {
+      if (shown) process.stderr.write('\r\x1b[2K');
+    },
+  };
+}
+
 export async function report(opts: ReportOptions = {}): Promise<Report> {
-  const r = await buildReport(opts);
+  const progress = progressLine();
+  let r: Report;
+  try {
+    r = await buildReport({ onProgress: progress.onProgress, ...opts });
+  } finally {
+    progress.clear();
+  }
   console.log(opts.json ? JSON.stringify(r, null, 2) : renderReport(r));
   return r;
 }

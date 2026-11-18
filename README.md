@@ -26,7 +26,7 @@ Total         $1,086.20             112    2.4B
 |---|---|
 | `--days=N` | Last N days, including today (default 30) |
 | `--all` | Everything in the logs |
-| `--by=project\|model\|branch\|day` | How to group (default `project`; sub-folders of a git repo count as one project) |
+| `--by=project\|model\|branch\|day\|session` | How to group (default `project`; sub-folders of a git repo count as one project). `session` lists your most expensive sessions with turns and the input / output / cache-write / cache-read split |
 | `--json` | Machine-readable output |
 
 ## Track it for the whole team
