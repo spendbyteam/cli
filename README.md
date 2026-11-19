@@ -25,10 +25,18 @@ Total         $1,086.20             112    2.4B
 **`report` makes no network calls at all.** It only reads those files and prints a table; you can run it with Wi-Fi off. The network code in this package belongs to `connect` and `init`, and runs only when you call them. On a work laptop you may prefer to pin a version instead of pulling the latest each time:
 
 ```bash
-npx spendbyteam@0.2.3 report
+npx spendbyteam@0.3.0 report
 ```
 
 Costs use Anthropic's API list prices, including cache reads, 5-minute and 1-hour cache writes, and fast mode.
+
+### In the browser
+
+On a terminal, `report` asks whether to open the same numbers as an interactive page (Enter = yes). `--web` opens it without asking, `--no-web` never asks.
+
+The page has a cost-per-day chart, the split by model and by token type, and tabs for projects, models, branches, days and sessions, each with a filter, sorting and paging. **Save as PDF** uses your browser's print dialog, **Export CSV** saves the current tab, and **Share** copies a short summary or opens a pre-filled post on X.
+
+It is a single local HTML file (in your temp folder) with its data inline. Its Content-Security-Policy blocks every network request, so it works with Wi-Fi off and uploads nothing; links only open when you click them.
 
 **Claude Code deletes these logs after 30 days by default** ([`cleanupPeriodDays`](https://code.claude.com/docs/en/settings)), so `report` can never look further back than that. It tells you when your logs are on the default and shows the oldest one left. To keep them, add this to `~/.claude/settings.json`:
 

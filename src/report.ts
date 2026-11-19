@@ -3,6 +3,10 @@ import path from 'node:path';
 import { homeDir } from './paths.js';
 import { costOf, normalizeModel, type Usage } from './pricing.js';
 import { UsageError } from './env.js';
+import os from 'node:os';
+import readline from 'node:readline/promises';
+import { renderHtml } from './html.js';
+import { openInBrowser } from './connect.js';
 
 /**
  * `spendbyteam report`: reads the Claude Code session logs on this machine and prints what that
@@ -20,6 +24,10 @@ export interface ReportOptions {
   json?: boolean;
   dirs?: string[];
   now?: Date;
+  /** Also group every other way (for the HTML report), from the same single read of the logs. */
+  views?: boolean;
+  /** true: open the HTML report; false: never ask; undefined: ask on an interactive terminal. */
+  web?: boolean;
   /** Called while reading, with bytes read so far and the total (for a progress line). */
   onProgress?: (done: number, total: number) => void;
 }
@@ -72,6 +80,8 @@ export interface Report {
   files: number;
   /** How long Claude Code keeps these logs before deleting them, and the oldest log still on disk. */
   retention: Retention;
+  /** Present when built with views: the same data grouped every way. */
+  views?: Record<GroupBy, Row[]>;
 }
 
 export interface Retention {
@@ -258,20 +268,39 @@ export async function buildReport(opts: ReportOptions = {}): Promise<Report> {
   let oldestMs = Infinity;
   for (const f of files) oldestMs = Math.min(oldestMs, fs.statSync(f).mtimeMs);
 
+  const unpriced = new Map<string, number>();
+  const priced: Request[] = [];
+  for (const r of requests.values()) {
+    if (r.cost === undefined) unpriced.set(r.model, (unpriced.get(r.model) ?? 0) + 1);
+    else priced.push(r);
+  }
+  const sessions = new Set(priced.map((r) => r.session));
+  const total = priced.reduce((n, r) => n + r.cost!, 0);
+  const tokens = priced.reduce((n, r) => n + r.tokens, 0);
+  const first = priced.reduce((n, r) => Math.min(n, r.at), Infinity);
+  const rows = groupRows(priced, by, total, sessionStart, since);
+  const views = opts.views ? (Object.fromEntries(GROUPS.map((g) => [g, g === by ? rows : groupRows(priced, g, total, sessionStart, since)])) as Record<GroupBy, Row[]>) : undefined;
+
+  return {
+    from: since !== null ? localDay(since) : Number.isFinite(first) ? localDay(first) : null,
+    to: localDay(now.getTime()),
+    by,
+    rows,
+    total: { cost: total, requests: priced.length, sessions: sessions.size, tokens },
+    unpriced: [...unpriced.entries()].map(([model, n]) => ({ model, requests: n })).sort((a, b) => b.requests - a.requests),
+    files: files.length,
+    retention: { ...cleanupPeriod(), oldestLog: Number.isFinite(oldestMs) ? localDay(oldestMs) : null },
+    ...(views ? { views } : {}),
+  };
+}
+
+/** One pass over the priced requests, grouped one way. */
+function groupRows(priced: Request[], by: GroupBy, total: number, sessionStart: Map<string, number>, since: number | null): Row[] {
   const groups = new Map<
     string,
     { cost: number; requests: number; sessions: Set<string>; tokens: number; split: TokenSplit; models: Map<string, number>; first: number; projects: Map<string, number> }
   >();
-  const unpriced = new Map<string, number>();
-  const sessions = new Set<string>();
-  let total = 0;
-  let tokens = 0;
-  let first = Infinity;
-  for (const r of requests.values()) {
-    if (r.cost === undefined) {
-      unpriced.set(r.model, (unpriced.get(r.model) ?? 0) + 1);
-      continue;
-    }
+  for (const r of priced) {
     const key = by === 'model' ? r.model : r[by];
     const g = groups.get(key) ?? {
       cost: 0,
@@ -283,7 +312,7 @@ export async function buildReport(opts: ReportOptions = {}): Promise<Report> {
       first: Infinity,
       projects: new Map<string, number>(),
     };
-    g.cost += r.cost;
+    g.cost += r.cost!;
     g.requests += 1;
     g.sessions.add(r.session);
     g.tokens += r.tokens;
@@ -292,16 +321,11 @@ export async function buildReport(opts: ReportOptions = {}): Promise<Report> {
     g.split.cacheWrite += r.split.cacheWrite;
     g.split.cacheRead += r.split.cacheRead;
     g.first = Math.min(g.first, r.at);
-    g.projects.set(r.project, (g.projects.get(r.project) ?? 0) + r.cost);
-    g.models.set(r.model, (g.models.get(r.model) ?? 0) + r.cost);
+    g.projects.set(r.project, (g.projects.get(r.project) ?? 0) + r.cost!);
+    g.models.set(r.model, (g.models.get(r.model) ?? 0) + r.cost!);
     groups.set(key, g);
-    sessions.add(r.session);
-    total += r.cost;
-    tokens += r.tokens;
-    first = Math.min(first, r.at);
   }
-
-  const rows: Row[] = [...groups.entries()]
+  return [...groups.entries()]
     .map(([key, g]) => ({
       key,
       cost: g.cost,
@@ -320,17 +344,6 @@ export async function buildReport(opts: ReportOptions = {}): Promise<Report> {
         : {}),
     }))
     .sort((a, b) => (by === 'day' ? a.key.localeCompare(b.key) : b.cost - a.cost));
-
-  return {
-    from: since !== null ? localDay(since) : Number.isFinite(first) ? localDay(first) : null,
-    to: localDay(now.getTime()),
-    by,
-    rows,
-    total: { cost: total, requests: [...groups.values()].reduce((n, g) => n + g.requests, 0), sessions: sessions.size, tokens },
-    unpriced: [...unpriced.entries()].map(([model, n]) => ({ model, requests: n })).sort((a, b) => b.requests - a.requests),
-    files: files.length,
-    retention: { ...cleanupPeriod(), oldestLog: Number.isFinite(oldestMs) ? localDay(oldestMs) : null },
-  };
 }
 
 const usd = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -490,10 +503,35 @@ export async function report(opts: ReportOptions = {}): Promise<Report> {
   const progress = progressLine();
   let r: Report;
   try {
-    r = await buildReport({ onProgress: progress.onProgress, ...opts });
+    r = await buildReport({ onProgress: progress.onProgress, views: !opts.json, ...opts });
   } finally {
     progress.clear();
   }
   console.log(opts.json ? JSON.stringify(r, null, 2) : renderReport(r));
+  if (!opts.json && r.rows.length > 0 && (opts.web ?? (await askToOpen()))) openHtml(r);
   return r;
+}
+
+/** Only on a real terminal, never in CI or with piped input/output. Enter means yes. */
+async function askToOpen(): Promise<boolean> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY || process.env.CI) return false;
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const a = (await rl.question('\nOpen this report in your browser, with bars? [Y/n] ')).trim().toLowerCase();
+    return a === '' || a === 'y' || a === 'yes';
+  } finally {
+    rl.close();
+  }
+}
+
+/** Writes the HTML report to a local file and opens it. Nothing is uploaded. */
+export function htmlReportPath(): string {
+  return path.join(os.tmpdir(), 'spendbyteam-report.html');
+}
+
+function openHtml(r: Report): void {
+  const file = htmlReportPath();
+  fs.writeFileSync(file, renderHtml(r), { mode: 0o600 });
+  console.log(`Opened ${file} (a local file; nothing was uploaded).`);
+  openInBrowser(file);
 }
