@@ -5,7 +5,8 @@ import { costOf, normalizeModel, type Usage } from './pricing.js';
 import { UsageError } from './env.js';
 import os from 'node:os';
 import readline from 'node:readline/promises';
-import { renderHtml } from './html.js';
+import zlib from 'node:zlib';
+import { renderHtml, webReportUrl } from './html.js';
 import { openInBrowser } from './connect.js';
 
 /**
@@ -26,8 +27,10 @@ export interface ReportOptions {
   now?: Date;
   /** Also group every other way (for the HTML report), from the same single read of the logs. */
   views?: boolean;
-  /** true: open the HTML report; false: never ask; undefined: ask on an interactive terminal. */
+  /** true: open the report in the browser; false: never ask; undefined: ask on an interactive terminal. */
   web?: boolean;
+  /** Open a local HTML file with real names instead of the anonymized page on spendbyteam.com. */
+  local?: boolean;
   /** Called while reading, with bytes read so far and the total (for a progress line). */
   onProgress?: (done: number, total: number) => void;
 }
@@ -508,16 +511,17 @@ export async function report(opts: ReportOptions = {}): Promise<Report> {
     progress.clear();
   }
   console.log(opts.json ? JSON.stringify(r, null, 2) : renderReport(r));
-  if (!opts.json && r.rows.length > 0 && (opts.web ?? (await askToOpen()))) openHtml(r);
+  if (!opts.json && r.rows.length > 0 && (opts.web ?? opts.local ?? (await askToOpen(!!opts.local)))) openReport(r, !!opts.local);
   return r;
 }
 
 /** Only on a real terminal, never in CI or with piped input/output. Enter means yes. */
-async function askToOpen(): Promise<boolean> {
+async function askToOpen(local: boolean): Promise<boolean> {
   if (!process.stdin.isTTY || !process.stdout.isTTY || process.env.CI) return false;
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   try {
-    const a = (await rl.question('\nOpen this report in your browser, with bars? [Y/n] ')).trim().toLowerCase();
+    const q = local ? 'Open this report in your browser? [Y/n] ' : 'Open it in your browser? Names are hidden and nothing is stored. [Y/n] ';
+    const a = (await rl.question(`\n${q}`)).trim().toLowerCase();
     return a === '' || a === 'y' || a === 'yes';
   } finally {
     rl.close();
@@ -529,7 +533,17 @@ export function htmlReportPath(): string {
   return path.join(os.tmpdir(), 'spendbyteam-report.html');
 }
 
-function openHtml(r: Report): void {
+function openReport(r: Report, local: boolean): void {
+  if (!local) {
+    const url = webReportUrl(r, { deflate: (t) => zlib.deflateRawSync(t, { level: 9 }) });
+    // Windows' `start` can't take a URL this long; fall back to the local file there.
+    if (process.platform !== 'win32' || url.length < 8000) {
+      console.log('Opened spendbyteam.com/report with project and branch names hidden. The numbers are in the link');
+      console.log('(after #, never sent to a server); nothing is stored. Real names: npx spendbyteam report --local');
+      openInBrowser(url);
+      return;
+    }
+  }
   const file = htmlReportPath();
   fs.writeFileSync(file, renderHtml(r), { mode: 0o600 });
   console.log(`Opened ${file} (a local file; nothing was uploaded).`);

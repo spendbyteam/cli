@@ -22,21 +22,25 @@ Total         $1,086.20             112    2.4B
 
 `report` reads the session logs Claude Code already keeps on your machine (`~/.claude/projects`, or `$CLAUDE_CONFIG_DIR`). It works offline and **sends nothing anywhere**.
 
-**`report` makes no network calls at all.** It only reads those files and prints a table; you can run it with Wi-Fi off. The network code in this package belongs to `connect` and `init`, and runs only when you call them. On a work laptop you may prefer to pin a version instead of pulling the latest each time:
+**`report` makes no network calls at all.** (Opening the browser view loads a page from spendbyteam.com, see below; `--local` doesn't.) It only reads those files and prints a table; you can run it with Wi-Fi off. The network code in this package belongs to `connect` and `init`, and runs only when you call them. On a work laptop you may prefer to pin a version instead of pulling the latest each time:
 
 ```bash
-npx spendbyteam@0.3.0 report
+npx spendbyteam@0.4.0 report
 ```
 
 Costs use Anthropic's API list prices, including cache reads, 5-minute and 1-hour cache writes, and fast mode.
 
 ### In the browser
 
-On a terminal, `report` asks whether to open the same numbers as an interactive page (Enter = yes). `--web` opens it without asking, `--no-web` never asks.
+On a terminal, `report` asks whether to open the numbers in your browser (Enter = yes). `--web` opens without asking, `--no-web` never asks.
 
-The page has a cost-per-day chart, the split by model and by token type, and tabs for projects, models, branches, days and sessions, each with a filter, sorting and paging. **Save as PDF** uses your browser's print dialog, **Export CSV** saves the current tab, and **Share** copies a short summary or opens a pre-filled post on X.
+By default it opens **spendbyteam.com/report** with your **project and branch names replaced** (Project 1, Branch 2…) on your machine first. The numbers travel in the part of the link after `#`, which browsers never send to a server, and the page removes them from the address bar as soon as it has read them. Nothing is stored: close or reload the page and it's gone. The page loads no analytics and its Content-Security-Policy blocks every request.
 
-It is a single local HTML file (in your temp folder) with its data inline. Its Content-Security-Policy blocks every network request, so it works with Wi-Fi off and uploads nothing; links only open when you click them.
+`--local` opens a local HTML file instead, with your real names and no network at all (it's also what happens on Windows, where the link would be too long).
+
+Either way you get a cost-per-day chart, the split by model and token type, and tabs for projects, models, branches, days and sessions with filter, sorting and paging; **Save as PDF** (print dialog), **Export CSV**, and **Share** (copy a summary, or a pre-filled post on X).
+
+`report` itself still makes no network calls. Only your browser does, to load the page.
 
 **Claude Code deletes these logs after 30 days by default** ([`cleanupPeriodDays`](https://code.claude.com/docs/en/settings)), so `report` can never look further back than that. It tells you when your logs are on the default and shows the oldest one left. To keep them, add this to `~/.claude/settings.json`:
 

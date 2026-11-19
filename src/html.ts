@@ -43,18 +43,7 @@ export function reportData(r: Report, opts: { version?: string; generatedAt?: Da
   };
 }
 
-export function renderHtml(r: Report, opts: { version?: string; generatedAt?: Date } = {}): string {
-  const data = JSON.stringify(reportData(r, opts)).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
-  const range = r.from ? `${r.from} → ${r.to}` : 'no usage found';
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:">
-<title>Claude Code spend · ${esc(range)}</title>
-<style>
-:root{color-scheme:light;--bg:#f6f6f4;--card:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--ink3:#8a8984;--rule:#e6e5e0;--grid:#ecebe7;--accent:#6250d6;--accent-soft:#eceaff;--warn:#fff6e0;--warnb:#efd9a3;
+const STYLE = `:root{color-scheme:light;--bg:#f6f6f4;--card:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--ink3:#8a8984;--rule:#e6e5e0;--grid:#ecebe7;--accent:#6250d6;--accent-soft:#eceaff;--warn:#fff6e0;--warnb:#efd9a3;
 --s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--other:#b9b8b2}
 @media (prefers-color-scheme:dark){:root{color-scheme:dark;--bg:#111110;--card:#1a1a19;--ink:#f0efec;--ink2:#c3c2b7;--ink3:#8f8e86;--rule:#2c2c2a;--grid:#262624;--accent:#9085e9;--accent-soft:#25213f;--warn:#2a2413;--warnb:#5b4b1e;
 --s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;--other:#5d5c57}}
@@ -128,10 +117,9 @@ code{font:.85em ui-monospace,SFMono-Regular,Menlo,monospace}
   .print-title{display:block!important;font-size:.8rem;color:#555;margin:0 0 8px}
 }
 .print-title{display:none}
-</style>
-</head>
-<body>
-<main>
+`;
+
+const BODY = (cta: string) => `<main>
   <header class="top">
     <div>
       <h1>Claude Code spend on this machine</h1>
@@ -145,7 +133,7 @@ code{font:.85em ui-monospace,SFMono-Regular,Menlo,monospace}
         <button type="button" role="menuitem" data-share="copy">Copy summary</button>
         <button type="button" role="menuitem" data-share="x">Post on X</button>
       </div>
-      <a class="btn primary" href="${HTML_CTA_URL}">See it for your team</a>
+      <a class="btn primary" href="${cta}">See it for your team</a>
     </div>
   </header>
 
@@ -178,15 +166,14 @@ code{font:.85em ui-monospace,SFMono-Regular,Menlo,monospace}
 
   <section class="cta">
     <p><strong>This is one machine.</strong><br><span>See it for your whole team, per project and client, with budgets, alerts and client-ready PDF reports. Free for up to 3 developers.</span></p>
-    <a class="btn primary" href="${HTML_CTA_URL}">See it for your team</a>
+    <a class="btn primary" href="${cta}">See it for your team</a>
   </section>
   <footer id="foot"></footer>
   <div class="toast" id="toast" role="status"></div>
-</main>
-<script id="data" type="application/json">${data}</script>
-<script>
-(function(){
-const D=JSON.parse(document.getElementById('data').textContent);
+</main>`;
+
+/** The report UI as one function of the data. Shared by the local file and the web page. */
+const APP = `function render(D){
 const $=id=>document.getElementById(id);
 const el=(tag,attrs,kids)=>{const e=document.createElement(tag);for(const k in attrs||{}){if(k==='text')e.textContent=attrs[k];else if(k==='style')e.style.cssText=attrs[k];else e.setAttribute(k,attrs[k]);}(kids||[]).forEach(c=>c&&e.appendChild(c));return e;};
 const usd=n=>'$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -204,7 +191,7 @@ const dayCount=D.from?Math.round((Date.parse(D.to)-Date.parse(D.from))/864e5)+1:
 $('sub').textContent=(D.from?D.from+' → '+D.to+' · '+dayCount+' days':'No usage found')+' · at API list prices. On a Pro, Max or Team seat you pay a flat fee; this is what the same tokens would cost on the API.';
 $('ptitle').textContent='Claude Code spend · '+(D.from?D.from+' → '+D.to:'');
 const sum=(rows,i)=>rows.reduce((n,r)=>n+r.split[i],0);
-const all=views[D.by]||[];
+const all=views.model||views[D.by]||[];
 const inTok=sum(all,0),outTok=sum(all,1),cw=sum(all,2),cr=sum(all,3);
 const cacheShare=(inTok+cw+cr)>0?cr/(inTok+cw+cr):0;
 const top=(k)=>(views[k]||[]).slice().sort((a,b)=>b.cost-a.cost)[0];
@@ -220,6 +207,7 @@ const kpis=[
 ];
 kpis.forEach(([v,l,h])=>$('kpis').appendChild(el('div',{class:'kpi'},[el('div',{class:'v num',text:v,title:v}),el('div',{class:'l',text:l}),el('div',{class:'h',text:h,title:h})])));
 
+if(D.mode==='web'){const a=el('aside',{class:'note'});a.appendChild(el('strong',{text:'Names hidden, nothing stored. '}));a.appendChild(document.createTextNode('Projects and branches show as Project 1, Branch 2… For real names, run '));a.appendChild(el('code',{text:'npx spendbyteam report --local'}));a.appendChild(document.createTextNode('. This page disappears when you close or reload it.'));$('note').appendChild(a);}
 const R=D.retention;
 if(R&&R.days<=90){const a=el('aside',{class:'note'});a.appendChild(el('strong',{text:'Heads-up: '}));
 a.appendChild(document.createTextNode('Claude Code deletes these logs after '+R.days+' days ('+(R.source==='default'?'by default':R.source==='managed'?'set by your organization':'set in your settings.json')+')'+(R.oldestLog?', so the oldest log left on this machine is from '+R.oldestLog:'')+'.'));
@@ -275,7 +263,7 @@ const COLS={
   session:[['started','Started',0],['cost','Cost',1],['requests','Turns',1],['tokens','Tokens',1],['cache','Cache read',1],['model','Model',0]],
 };
 const cols=()=>tab==='session'?COLS.session:COLS.default;
-Object.keys(NAMES).filter(k=>V[k]).forEach(k=>{const b=el('button',{type:'button',role:'tab','aria-selected':String(k===tab),text:NAMES[k]+' ('+V[k].length+')'});b.onclick=()=>{tab=k;page=0;q='';$('q').value='';sortK=k==='day'?'key':'cost';sortDir=k==='day'?1:-1;[...$('tabs').children].forEach(c=>c.setAttribute('aria-selected',String(c===b)));draw();};$('tabs').appendChild(b);});
+Object.keys(NAMES).filter(k=>V[k]).forEach(k=>{const b=el('button',{type:'button',role:'tab','aria-selected':String(k===tab),text:NAMES[k]+' ('+((D.counts&&D.counts[k])||V[k].length)+')'});b.onclick=()=>{tab=k;page=0;q='';$('q').value='';sortK=k==='day'?'key':'cost';sortDir=k==='day'?1:-1;[...$('tabs').children].forEach(c=>c.setAttribute('aria-selected',String(c===b)));draw();};$('tabs').appendChild(b);});
 $('q').addEventListener('input',e=>{q=e.target.value.trim().toLowerCase();page=0;draw();});
 const val=(r,k)=>k==='share'?r.cost:k==='cache'?r.split[3]/Math.max(1,r.split[0]+r.split[2]+r.split[3]):k==='started'?(r.started||''):r[k];
 function rowsNow(){
@@ -298,7 +286,8 @@ function draw(){
   const fc=rows.reduce((n,r)=>n+r.cost,0),ft=rows.reduce((n,r)=>n+r.tokens,0);
   const f=el('tr',{},[el('td',{text:q?'Filtered total':'Total'}),el('td',{class:'n',text:usd(fc)}),el('td',{class:'n',text:tab==='session'?String(rows.reduce((n,r)=>n+r.requests,0)):pct(T.cost?fc/T.cost:0)}),el('td',{class:'n',text:tab==='session'?cmp(ft):String(tab==='session'?'':rows.reduce((n,r)=>n+r.sessions,0))}),el('td',{class:'n',text:tab==='session'?'':cmp(ft)}),el('td')]);
   tbl.tFoot.replaceChildren(f);
-  $('count').textContent=rows.length+' of '+(views[tab]||[]).length+' '+NAMES[tab].toLowerCase();
+  const full=(D.counts&&D.counts[tab])||(views[tab]||[]).length;
+  $('count').textContent=rows.length+' of '+(views[tab]||[]).length+' '+NAMES[tab].toLowerCase()+(full>(views[tab]||[]).length?' (top '+(views[tab]||[]).length+' of '+full+' in this link)':'');
   const pg=$('pager');pg.replaceChildren();
   if(rows.length>PAGE){const prev=el('button',{type:'button',text:'← Prev'}),next=el('button',{type:'button',text:'Next →'});prev.disabled=page===0;next.disabled=page>=pages-1;prev.onclick=()=>{page--;draw();};next.onclick=()=>{page++;draw();};
     pg.appendChild(el('span',{class:'num',text:(page*PAGE+1)+'–'+Math.min(rows.length,(page+1)*PAGE)+' of '+rows.length}));pg.appendChild(prev);pg.appendChild(next);}
@@ -321,11 +310,128 @@ menu.addEventListener('click',e=>{const k=e.target.getAttribute('data-share');if
   if(k==='x'){const t='My Claude Code usage over '+dayCount+' days: '+usd(T.cost)+' at API prices, '+T.sessions+' sessions, '+pct(cacheShare)+' read from cache.\\n\\nMeasured offline with npx spendbyteam report';window.open('https://x.com/intent/post?text='+encodeURIComponent(t),'_blank','noopener');}});
 function toast(t){const e=$('toast');e.textContent=t;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),1600);}
 
-const f=$('foot');f.appendChild(document.createTextNode('Generated on this machine by '));f.appendChild(el('code',{text:'npx spendbyteam report'+(D.version?' '+D.version:'')}));
-f.appendChild(document.createTextNode(' at '+D.generated.slice(0,16).replace('T',' ')+' UTC. Nothing was uploaded; this page makes no network requests. '));f.appendChild(el('a',{href:'https://github.com/spendbyteam/cli',text:'Source'}));
-})();
+const f=$('foot');
+if(D.mode==='web'){f.appendChild(document.createTextNode('Made with '));f.appendChild(el('code',{text:'npx spendbyteam report'}));f.appendChild(document.createTextNode(' on '+D.generated.slice(0,16).replace('T',' ')+' UTC. Project and branch names were replaced on your machine before the link was made. The numbers travel in the part of the link after #, which browsers never send to a server, so nothing was stored; reloading or closing this page discards them. '));}
+else{f.appendChild(document.createTextNode('Generated on this machine by '));f.appendChild(el('code',{text:'npx spendbyteam report'+(D.version?' '+D.version:'')}));f.appendChild(document.createTextNode(' at '+D.generated.slice(0,16).replace('T',' ')+' UTC. Nothing was uploaded; this page makes no network requests. '));}
+f.appendChild(el('a',{href:'https://github.com/spendbyteam/cli',text:'Source'}));
+}`;
+
+const LOCAL_CSP = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:";
+
+export function renderHtml(r: Report, opts: { version?: string; generatedAt?: Date } = {}): string {
+  const data = JSON.stringify({ ...reportData(r, opts), mode: 'local' }).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  const range = r.from ? `${r.from} → ${r.to}` : 'no usage found';
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="${LOCAL_CSP}">
+<title>Claude Code spend · ${esc(range)}</title>
+<style>
+${STYLE}</style>
+</head>
+<body>
+${BODY(HTML_CTA_URL)}
+<script id="data" type="application/json">${data}</script>
+<script>
+${APP}
+render(JSON.parse(document.getElementById('data').textContent));
 </script>
 </body>
 </html>
 `;
+}
+
+/* ------------------------------------------------------------------------------------------
+ * Web view: spendbyteam.com/report#d=…
+ * The numbers ride in the URL fragment, which browsers never send to a server, so the site
+ * stores nothing. Project and branch names are replaced here, on the machine, before the
+ * link is built. The page drops the fragment from the address bar as soon as it has read it,
+ * so a reload or a copied URL shows nothing.
+ * ---------------------------------------------------------------------------------------- */
+
+export const WEB_REPORT_URL = 'https://spendbyteam.com/report';
+export const WEB_CTA_URL = 'https://app.spendbyteam.com/register?src=cli&cmp=web';
+const WEB_MAX_ROWS = 150;
+
+/** Replaces project and branch names with stable aliases (by cost rank); models and days stay. */
+export function anonymize(r: Report): Report {
+  const views = r.views ?? ({ [r.by]: r.rows } as Record<GroupBy, Row[]>);
+  const alias = (rows: Row[] | undefined, word: string) => {
+    const m = new Map<string, string>();
+    [...(rows ?? [])].sort((a, b) => b.cost - a.cost).forEach((row, i) => m.set(row.key, `${word} ${i + 1}`));
+    return m;
+  };
+  const projects = alias(views.project, 'Project');
+  const branches = alias(views.branch, 'Branch');
+  const sessions = new Map((views.session ?? []).map((row, i) => [row.key, `Session ${i + 1}`]));
+  const map = (by: GroupBy, rows: Row[]): Row[] =>
+    rows.map((row) => ({
+      ...row,
+      key:
+        by === 'project'
+          ? projects.get(row.key) ?? 'Project'
+          : by === 'branch'
+            ? branches.get(row.key) ?? 'Branch'
+            : by === 'session'
+              ? sessions.get(row.key) ?? 'Session'
+              : row.key,
+      ...(row.project !== undefined ? { project: projects.get(row.project) ?? 'Project' } : {}),
+    }));
+  const anonViews = Object.fromEntries(Object.entries(views).map(([k, rows]) => [k, map(k as GroupBy, rows ?? [])])) as Record<GroupBy, Row[]>;
+  return { ...r, rows: anonViews[r.by] ?? [], views: anonViews };
+}
+
+/** The link that opens this report on spendbyteam.com, with anonymized numbers in its fragment. */
+export function webReportUrl(r: Report, opts: { generatedAt?: Date; deflate: (s: string) => Buffer }): string {
+  const d = { ...reportData(anonymize(r), { generatedAt: opts.generatedAt }), mode: 'web' };
+  const counts = Object.fromEntries(Object.entries(d.views).map(([k, rows]) => [k, rows.length]));
+  d.views = Object.fromEntries(Object.entries(d.views).map(([k, rows]) => [k, rows.slice(0, WEB_MAX_ROWS)]));
+  return `${WEB_REPORT_URL}#d=${opts.deflate(JSON.stringify({ ...d, counts })).toString('base64url')}`;
+}
+
+const WEB_BOOT = `(async function(){
+  var m=location.hash.match(/^#d=([A-Za-z0-9_-]+)$/);
+  if(location.hash)history.replaceState(null,'',location.pathname);
+  var empty=document.getElementById('empty'),app=document.getElementById('app');
+  if(!m){empty.hidden=false;return;}
+  try{
+    var b=m[1].replace(/-/g,'+').replace(/_/g,'/');while(b.length%4)b+='=';
+    var bin=atob(b),bytes=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+    var txt=await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+    var D=JSON.parse(txt);if(!D||D.mode!=='web'||typeof D.views!=='object')throw new Error('bad');
+    app.hidden=false;render(D);
+  }catch(e){app.hidden=true;empty.hidden=false;}
+})();`;
+
+/** The static page served at spendbyteam.com/report (HTML + its script; the site's CSP forbids inline scripts). */
+export function webShell(): { html: string; js: string } {
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<title>Claude Code spend · SpendByTeam</title>
+<style>
+${STYLE}#empty{max-width:560px;margin:15vh auto;padding:0 16px;text-align:center}#empty h1{margin-bottom:8px}
+</style>
+</head>
+<body>
+<div id="empty" hidden>
+  <h1>Nothing to show</h1>
+  <p class="sub">This page shows a Claude Code cost report made with <code>npx spendbyteam report</code>, once. The numbers live only in the link and are discarded when you reload or close the page; nothing is stored on our side.</p>
+  <p><a class="btn primary" href="https://github.com/spendbyteam/cli">Get the CLI</a></p>
+</div>
+<div id="app" hidden>
+${BODY(WEB_CTA_URL)}
+</div>
+<script src="/report.js"></script>
+</body>
+</html>
+`;
+  const js = `// Generated from cli/src/html.ts (npm run web-shell). Do not edit by hand.\n${APP}\n${WEB_BOOT}\n`;
+  return { html, js };
 }

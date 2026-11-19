@@ -1,6 +1,6 @@
 {
   "name": "spendbyteam",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "See what Claude Code costs per project, model, branch or day (offline), and connect it to SpendByTeam for your team.",
   "license": "MIT",
   "homepage": "https://spendbyteam.com/docs/install",
@@ -30,7 +30,8 @@
     "test": "npm run test:unit && npm run test:hook",
     "test:unit": "vitest run",
     "test:hook": "bash test/hook.test.sh",
-    "prepublishOnly": "npm run build && npm test"
+    "prepublishOnly": "npm run build && npm test",
+    "web-shell": "npm run build && node scripts/web-shell.mjs"
   },
   "keywords": [
     "claude-code",

@@ -58,3 +58,59 @@ describe('html report', () => {
     expect(JSON.parse(m![1]!).retention).toEqual({ days: 30, source: 'default', oldestLog: '2026-10-04' });
   });
 });
+
+import fs from 'node:fs';
+import path from 'node:path';
+import zlib from 'node:zlib';
+import { anonymize, webReportUrl, webShell, WEB_REPORT_URL } from '../src/html.js';
+
+describe('web report link', () => {
+  const secret: Report = {
+    ...base,
+    rows: [],
+    views: {
+      project: [{ ...base.rows[0]!, key: 'acme-client-portal', cost: 9 }, { ...base.rows[0]!, key: '~/work/bigbank', cost: 3 }],
+      branch: [{ ...base.rows[0]!, key: 'feature/acme-sso' }],
+      model: [{ ...base.rows[0]!, key: 'claude-opus-5-5' }],
+      day: [{ ...base.rows[0]!, key: '2026-11-19' }],
+      session: [{ ...base.rows[0]!, key: 'sess-uuid-1', project: 'acme-client-portal', startedAt: '2026-11-19T09:00:00.000Z' }],
+    },
+  };
+  const url = webReportUrl(secret, { deflate: (s) => zlib.deflateRawSync(s), generatedAt: new Date('2026-11-19T10:00:00Z') });
+  const payload = () => JSON.parse(zlib.inflateRawSync(Buffer.from(url.split('#d=')[1]!, 'base64url')).toString());
+
+  it('puts the data after # on spendbyteam.com/report, so it never reaches the server', () => {
+    expect(url.startsWith(`${WEB_REPORT_URL}#d=`)).toBe(true);
+    expect(url.split('#')[0]).toBe(WEB_REPORT_URL);
+  });
+
+  it('hides project, branch and session names; keeps models and days', () => {
+    const d = payload();
+    const text = JSON.stringify(d);
+    for (const name of ['acme', 'bigbank', 'sess-uuid']) expect(text).not.toContain(name);
+    expect(d.mode).toBe('web');
+    expect(d.views.project.map((r: unknown[]) => r[0])).toEqual(['Project 1', 'Project 2']);
+    expect(d.views.session[0][8]).toBe('Project 1');
+    expect(d.views.model[0][0]).toBe('claude-opus-5-5');
+    expect(d.views.day[0][0]).toBe('2026-11-19');
+  });
+
+  it('anonymize leaves the totals alone', () => {
+    expect(anonymize(secret).total).toEqual(secret.total);
+  });
+
+  it('the web page has no inline script and drops the fragment after reading it', () => {
+    const { html, js } = webShell();
+    expect(html).not.toMatch(/<script>(?!<\/script>)/);
+    expect(html).toContain('<script src="/report.js"></script>');
+    expect(js).toContain("history.replaceState(null,'',location.pathname)");
+    expect(js).not.toMatch(/fetch\(|XMLHttpRequest|sendBeacon|WebSocket/);
+  });
+
+  const landing = path.resolve(__dirname, '../../landing/public');
+  it.runIf(fs.existsSync(landing))('the committed spendbyteam.com/report page matches the CLI (run npm run web-shell)', () => {
+    const { html, js } = webShell();
+    expect(fs.readFileSync(path.join(landing, 'report.html'), 'utf8')).toBe(html);
+    expect(fs.readFileSync(path.join(landing, 'report.js'), 'utf8')).toBe(js);
+  });
+});

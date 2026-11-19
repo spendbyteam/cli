@@ -15,7 +15,7 @@ import { consoleLogger } from './log.js';
 const HELP = `spendbyteam — see and share what Claude Code costs (metrics only, no prompts or code)
 
 Usage:
-  npx spendbyteam report [--days=30 | --all] [--by=project|model|branch|day|session] [--json] [--web | --no-web]
+  npx spendbyteam report [--days=30 | --all] [--by=project|model|branch|day|session] [--json] [--web | --local | --no-web]
   npx spendbyteam connect [--team-id=ID] [--no-browser]
   npx spendbyteam init --token=sbt_ing_... [--endpoint=URL] [--team-id=ID] [--no-ping]
   npx spendbyteam uninstall
@@ -43,7 +43,8 @@ Options:
   --all          report: everything in the logs.
   --by           report: group by project (default), model, branch, day or session.
   --json         report: print JSON instead of a table.
-  --web          report: also open it in your browser as a local HTML page (asked by default on a terminal).
+  --web          report: open it on spendbyteam.com with names hidden; the numbers ride in the link, nothing is stored (asked by default).
+  --local        report: open it as a local HTML file with real names, fully offline.
   --no-web       report: don't ask to open it in the browser.
   --no-browser   connect: print the approval link instead of opening a browser.
   --app-url      connect: panel URL (default https://app.spendbyteam.com).
@@ -72,6 +73,7 @@ export async function main(argv: string[]): Promise<number> {
       json: { type: 'boolean', default: false },
       web: { type: 'boolean' },
       'no-web': { type: 'boolean', default: false },
+      local: { type: 'boolean' },
       'no-browser': { type: 'boolean', default: false },
       'app-url': { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },
@@ -96,7 +98,7 @@ export async function main(argv: string[]): Promise<number> {
       if (values.by !== undefined && !GROUPS.includes(values.by as GroupBy)) {
         throw new UsageError(`--by must be one of: ${GROUPS.join(', ')}.`);
       }
-      await report({ days, all: values.all, by: values.by as GroupBy | undefined, json: values.json, web: values['no-web'] ? false : values.web });
+      await report({ days, all: values.all, by: values.by as GroupBy | undefined, json: values.json, web: values['no-web'] ? false : values.web, local: values.local });
       return 0;
     }
     case 'connect':
