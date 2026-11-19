@@ -62,7 +62,7 @@ describe('html report', () => {
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import { anonymize, webReportUrl, webShell, WEB_REPORT_URL } from '../src/html.js';
+import { webReportUrl, webShell, WEB_REPORT_URL } from '../src/html.js';
 
 describe('web report link', () => {
   const secret: Report = {
@@ -84,19 +84,13 @@ describe('web report link', () => {
     expect(url.split('#')[0]).toBe(WEB_REPORT_URL);
   });
 
-  it('hides project, branch and session names; keeps models and days', () => {
+  it('carries real names in the fragment; the page can hide them and shared text always does', () => {
     const d = payload();
-    const text = JSON.stringify(d);
-    for (const name of ['acme', 'bigbank', 'sess-uuid']) expect(text).not.toContain(name);
     expect(d.mode).toBe('web');
-    expect(d.views.project.map((r: unknown[]) => r[0])).toEqual(['Project 1', 'Project 2']);
-    expect(d.views.session[0][8]).toBe('Project 1');
-    expect(d.views.model[0][0]).toBe('claude-opus-5-5');
-    expect(d.views.day[0][0]).toBe('2026-11-19');
-  });
-
-  it('anonymize leaves the totals alone', () => {
-    expect(anonymize(secret).total).toEqual(secret.total);
+    expect(d.views.project.map((r: unknown[]) => r[0])).toEqual(['acme-client-portal', '~/work/bigbank']);
+    const { js } = webShell();
+    expect(js).toContain('Hide names');
+    expect(js).toContain("nm('project',r.key,true)");
   });
 
   it('the web page has no inline script and drops the fragment after reading it', () => {

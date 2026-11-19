@@ -520,7 +520,7 @@ async function askToOpen(local: boolean): Promise<boolean> {
   if (!process.stdin.isTTY || !process.stdout.isTTY || process.env.CI) return false;
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   try {
-    const q = local ? 'Open this report in your browser? [Y/n] ' : 'Open it in your browser? Names are hidden and nothing is stored. [Y/n] ';
+    const q = local ? 'Open this report in your browser? [Y/n] ' : 'Open it in your browser? Nothing is stored. [Y/n] ';
     const a = (await rl.question(`\n${q}`)).trim().toLowerCase();
     return a === '' || a === 'y' || a === 'yes';
   } finally {
@@ -538,8 +538,8 @@ function openReport(r: Report, local: boolean): void {
     const url = webReportUrl(r, { deflate: (t) => zlib.deflateRawSync(t, { level: 9 }) });
     // Windows' `start` can't take a URL this long; fall back to the local file there.
     if (process.platform !== 'win32' || url.length < 8000) {
-      console.log('Opened spendbyteam.com/report with project and branch names hidden. The numbers are in the link');
-      console.log('(after #, never sent to a server); nothing is stored. Real names: npx spendbyteam report --local');
+      console.log('Opened spendbyteam.com/report. The numbers are in the link (after #, never sent to a server);');
+      console.log('nothing is stored. Fully offline instead: npx spendbyteam report --local');
       openInBrowser(url);
       return;
     }

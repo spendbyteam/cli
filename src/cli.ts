@@ -43,8 +43,8 @@ Options:
   --all          report: everything in the logs.
   --by           report: group by project (default), model, branch, day or session.
   --json         report: print JSON instead of a table.
-  --web          report: open it on spendbyteam.com with names hidden; the numbers ride in the link, nothing is stored (asked by default).
-  --local        report: open it as a local HTML file with real names, fully offline.
+  --web          report: open it on spendbyteam.com; the numbers ride in the link (after #), nothing is stored (asked by default).
+  --local        report: open it as a local HTML file instead, fully offline.
   --no-web       report: don't ask to open it in the browser.
   --no-browser   connect: print the approval link instead of opening a browser.
   --app-url      connect: panel URL (default https://app.spendbyteam.com).

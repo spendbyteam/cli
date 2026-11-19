@@ -34,9 +34,9 @@ Costs use Anthropic's API list prices, including cache reads, 5-minute and 1-hou
 
 On a terminal, `report` asks whether to open the numbers in your browser (Enter = yes). `--web` opens without asking, `--no-web` never asks.
 
-By default it opens **spendbyteam.com/report** with your **project and branch names replaced** (Project 1, Branch 2…) on your machine first. The numbers travel in the part of the link after `#`, which browsers never send to a server, and the page removes them from the address bar as soon as it has read them. Nothing is stored: close or reload the page and it's gone. The page loads no analytics and its Content-Security-Policy blocks every request.
+By default it opens **spendbyteam.com/report**. The numbers travel in the part of the link after `#`, which browsers never send to a server, and the page removes them from the address bar as soon as it has read them. Nothing is stored: close or reload the page and it's gone. **Hide names** on the page swaps projects and branches for Project 1, Branch 2… before a screenshot or PDF, and the shared summary always hides them. (If your browser syncs its history, the link may be in that history; `--local` avoids even that.) The page loads no analytics and its Content-Security-Policy blocks every request.
 
-`--local` opens a local HTML file instead, with your real names and no network at all (it's also what happens on Windows, where the link would be too long).
+`--local` opens a local HTML file instead, with no network at all (it's also what happens on Windows, where the link would be too long).
 
 Either way you get a cost-per-day chart, the split by model and token type, and tabs for projects, models, branches, days and sessions with filter, sorting and paging; **Save as PDF** (print dialog), **Export CSV**, and **Share** (copy a summary, or a pre-filled post on X).
 

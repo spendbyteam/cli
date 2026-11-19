@@ -144,6 +144,7 @@ const BODY = (cta: string) => `<main>
     </div>
     <div class="actions no-print">
       <button type="button" id="pdf" title="Opens the print dialog; choose “Save as PDF”">Save as PDF</button>
+      <button type="button" id="names" aria-pressed="false">Hide names</button>
       <button type="button" id="csv">Export CSV</button>
       <button type="button" id="share" aria-haspopup="true" aria-expanded="false">Share ▾</button>
       <div class="menu" id="menu" role="menu">
@@ -202,6 +203,13 @@ const ONE={project:'Project',model:'Model',branch:'Branch',day:'Day',session:'Se
 const V=D.views, T=D.total;
 const row=a=>({key:a[0],cost:a[1],requests:a[2],sessions:a[3],tokens:a[4],split:a[5],model:a[6],started:a[7],project:a[8],before:a[9]});
 const views={};for(const k in V)views[k]=V[k].map(row);
+/* Names: shown by default; "Hide names" swaps projects and branches for Project 1, Branch 2… (by cost).
+   Shared text (summary, post on X) always uses the hidden names. */
+let hideNames=false;
+const ALIAS={project:new Map(),branch:new Map()};
+['project','branch'].forEach(k=>(views[k]||[]).slice().sort((a,b)=>b.cost-a.cost).forEach((r,i)=>ALIAS[k].set(r.key,(k==='project'?'Project ':'Branch ')+(i+1))));
+const aliasOf=(k,name)=>ALIAS[k].get(name)||(k==='project'?'Project':'Branch');
+const nm=(k,name,force)=>(hideNames||force)&&(k==='project'||k==='branch')?aliasOf(k,name):name;
 
 /* ---- header + KPIs ---- */
 const dayCount=D.from?Math.round((Date.parse(D.to)-Date.parse(D.from))/864e5)+1:0;
@@ -219,12 +227,13 @@ const kpis=[
   [String(T.sessions),'Sessions',T.sessions?usd(T.cost/T.sessions)+' per session':''],
   [cmp(T.tokens),'Tokens',T.requests.toLocaleString('en-US')+' requests'],
   [pct(cacheShare),'Read from cache','of input-side tokens'],
-  [tp?pct(tp.cost/T.cost):'–','Top project',tp?tp.key:''],
+  [tp?pct(tp.cost/T.cost):'–','Top project',tp?{project:tp.key}:''],
   [tm?pct(tm.cost/T.cost):'–','Top model',tm?tm.key.replace(/^claude-/,''):''],
 ];
-kpis.forEach(([v,l,h])=>$('kpis').appendChild(el('div',{class:'kpi'},[el('div',{class:'v num',text:v,title:v}),el('div',{class:'l',text:l}),el('div',{class:'h',text:h,title:h})])));
+function drawKpis(){$('kpis').replaceChildren();kpis.forEach(([v,l,h0])=>{const h=h0&&h0.project!==undefined?nm('project',h0.project):h0;$('kpis').appendChild(el('div',{class:'kpi'},[el('div',{class:'v num',text:v,title:v}),el('div',{class:'l',text:l}),el('div',{class:'h',text:h,title:h})]));});}
+drawKpis();
 
-if(D.mode==='web'){const a=el('aside',{class:'note'});a.appendChild(el('strong',{text:'Names hidden, nothing stored. '}));a.appendChild(document.createTextNode('Projects and branches show as Project 1, Branch 2… For real names, run '));a.appendChild(el('code',{text:'npx spendbyteam report --local'}));a.appendChild(document.createTextNode('. This page disappears when you close or reload it.'));$('note').appendChild(a);}
+if(D.mode==='web'){const a=el('aside',{class:'note'});a.appendChild(el('strong',{text:'Nothing is stored. '}));a.appendChild(document.createTextNode('These numbers came in the link (after #, which never reaches a server) and were removed from the address bar. Close or reload and they are gone. Use “Hide names” before a screenshot or PDF; shared text always hides them.'));$('note').appendChild(a);}
 const R=D.retention;
 if(R&&R.days<=90){const a=el('aside',{class:'note'});a.appendChild(el('strong',{text:'Heads-up: '}));
 a.appendChild(document.createTextNode('Claude Code deletes these logs after '+R.days+' days ('+(R.source==='default'?'by default':R.source==='managed'?'set by your organization':'set in your settings.json')+')'+(R.oldestLog?', so the oldest log left on this machine is from '+R.oldestLog:'')+'.'));
@@ -285,7 +294,7 @@ $('q').addEventListener('input',e=>{q=e.target.value.trim().toLowerCase();page=0
 const val=(r,k)=>k==='share'?r.cost:k==='cache'?r.split[3]/Math.max(1,r.split[0]+r.split[2]+r.split[3]):k==='started'?(r.started||''):r[k];
 function rowsNow(){
   let rows=views[tab]||[];
-  if(q)rows=rows.filter(r=>(r.key+' '+(r.project||'')+' '+r.model).toLowerCase().includes(q));
+  if(q)rows=rows.filter(r=>(nm(tab,r.key)+' '+(r.project?nm('project',r.project):'')+' '+r.model).toLowerCase().includes(q));
   return rows.slice().sort((a,b)=>{const x=val(a,sortK),y=val(b,sortK);return (typeof x==='string'?x.localeCompare(y):x-y)*sortDir;});
 }
 function draw(){
@@ -295,7 +304,7 @@ function draw(){
   tbl.tHead.replaceChildren(head);
   const body=document.createDocumentFragment(),max=Math.max(...(views[tab]||[]).map(r=>r.cost),1e-9);
   shown.forEach(r=>{const tr=el('tr');C.forEach(([k,,num],i)=>{let td;
-    if(i===0){td=el('td',{class:'k'});const label=tab==='session'?(r.before?'≤ ':'')+(r.started||'').slice(0,16).replace('T',' '):r.key;td.appendChild(el('span',{class:'t',text:label,title:label}));if(tab==='session'&&r.project)td.appendChild(el('small',{text:r.project,title:r.project}));td.appendChild(el('div',{class:'bar'},[el('span',{style:'width:'+Math.max(.5,r.cost/max*100).toFixed(1)+'%'})]));}
+    if(i===0){td=el('td',{class:'k'});const label=tab==='session'?(r.before?'≤ ':'')+(r.started||'').slice(0,16).replace('T',' '):nm(tab,r.key);td.appendChild(el('span',{class:'t',text:label,title:label}));if(tab==='session'&&r.project){const pn=nm('project',r.project);td.appendChild(el('small',{text:pn,title:pn}));}td.appendChild(el('div',{class:'bar'},[el('span',{style:'width:'+Math.max(.5,r.cost/max*100).toFixed(1)+'%'})]));}
     else{const v=k==='cost'?usd(r.cost):k==='share'?pct(T.cost?r.cost/T.cost:0):k==='tokens'?cmp(r.tokens):k==='cache'?pct(val(r,'cache')):k==='model'?(tab==='model'?'':r.model):String(r[k]);td=el('td',{class:num?'n':'',text:v});}
     tr.appendChild(td);});body.appendChild(tr);});
   if(printing&&rows.length>PRINT_ROWS){const rest=rows.slice(PRINT_ROWS),rc=rest.reduce((n,r)=>n+r.cost,0);
@@ -321,19 +330,20 @@ window.addEventListener('beforeprint',()=>{printing=true;draw();});
 window.addEventListener('afterprint',()=>{printing=false;draw();});
 $('pdf').onclick=()=>window.print();
 $('csv').onclick=()=>{const C=cols(),q2=s=>'"'+String(s).replace(/"/g,'""')+'"';
-  const lines=[[ONE[tab],'Cost USD','Requests','Sessions','Tokens','Input','Output','Cache write','Cache read','Model'].map(q2).join(',')].concat(rowsNow().map(r=>[tab==='session'?r.started:r.key,r.cost.toFixed(4),r.requests,r.sessions,r.tokens,...r.split,r.model].map(q2).join(',')));
+  const lines=[[ONE[tab],'Cost USD','Requests','Sessions','Tokens','Input','Output','Cache write','Cache read','Model'].map(q2).join(',')].concat(rowsNow().map(r=>[tab==='session'?r.started:nm(tab,r.key),r.cost.toFixed(4),r.requests,r.sessions,r.tokens,...r.split,r.model].map(q2).join(',')));
   const a=el('a',{href:URL.createObjectURL(new Blob([lines.join('\\n')],{type:'text/csv'})),download:'claude-code-'+tab+'-'+(D.to||'report')+'.csv'});document.body.appendChild(a);a.click();a.remove();toast('CSV saved');};
 const menu=$('menu');$('share').onclick=e=>{e.stopPropagation();const o=menu.classList.toggle('open');$('share').setAttribute('aria-expanded',String(o));};
 document.addEventListener('click',()=>{menu.classList.remove('open');$('share').setAttribute('aria-expanded','false');});
-function summary(){const tops=(views.project||[]).slice().sort((a,b)=>b.cost-a.cost).slice(0,3).map(r=>'- '+r.key+': '+usd(r.cost)).join('\\n');
+function summary(){const tops=(views.project||[]).slice().sort((a,b)=>b.cost-a.cost).slice(0,3).map(r=>'- '+nm('project',r.key,true)+': '+usd(r.cost)).join('\\n');
   return 'My Claude Code usage, '+D.from+' → '+D.to+': '+usd(T.cost)+' at API prices, '+T.sessions+' sessions, '+cmp(T.tokens)+' tokens ('+pct(cacheShare)+' from cache).'+(tops?'\\nTop projects:\\n'+tops:'')+'\\n\\nMeasured offline with npx spendbyteam report';}
 menu.addEventListener('click',e=>{const k=e.target.getAttribute('data-share');if(!k)return;
   if(k==='copy'){navigator.clipboard.writeText(summary()).then(()=>toast('Summary copied'),()=>toast('Copy failed'));}
   if(k==='x'){const t='My Claude Code usage over '+dayCount+' days: '+usd(T.cost)+' at API prices, '+T.sessions+' sessions, '+pct(cacheShare)+' read from cache.\\n\\nMeasured offline with npx spendbyteam report';window.open('https://x.com/intent/post?text='+encodeURIComponent(t),'_blank','noopener');}});
 function toast(t){const e=$('toast');e.textContent=t;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),1600);}
 
+$('names').onclick=()=>{hideNames=!hideNames;$('names').setAttribute('aria-pressed',String(hideNames));$('names').textContent=hideNames?'Show names':'Hide names';drawKpis();draw();};
 const f=$('foot');
-if(D.mode==='web'){f.appendChild(document.createTextNode('Made with '));f.appendChild(el('code',{text:'npx spendbyteam report'}));f.appendChild(document.createTextNode(' on '+D.generated.slice(0,16).replace('T',' ')+' UTC. Project and branch names were replaced on your machine before the link was made. The numbers travel in the part of the link after #, which browsers never send to a server, so nothing was stored; reloading or closing this page discards them. '));}
+if(D.mode==='web'){f.appendChild(document.createTextNode('Made with '));f.appendChild(el('code',{text:'npx spendbyteam report'}));f.appendChild(document.createTextNode(' on '+D.generated.slice(0,16).replace('T',' ')+' UTC. The numbers travel in the part of the link after #, which browsers never send to a server, so nothing was stored; reloading or closing this page discards them. '));}
 else{f.appendChild(document.createTextNode('Generated on this machine by '));f.appendChild(el('code',{text:'npx spendbyteam report'+(D.version?' '+D.version:'')}));f.appendChild(document.createTextNode(' at '+D.generated.slice(0,16).replace('T',' ')+' UTC. Nothing was uploaded; this page makes no network requests. '));}
 f.appendChild(el('a',{href:'https://github.com/spendbyteam/cli',text:'Source'}));
 }`;
@@ -368,46 +378,18 @@ render(JSON.parse(document.getElementById('data').textContent));
 /* ------------------------------------------------------------------------------------------
  * Web view: spendbyteam.com/report#d=…
  * The numbers ride in the URL fragment, which browsers never send to a server, so the site
- * stores nothing. Project and branch names are replaced here, on the machine, before the
- * link is built. The page drops the fragment from the address bar as soon as it has read it,
- * so a reload or a copied URL shows nothing.
+ * stores nothing. The page drops the fragment from the address bar as soon as it has read it,
+ * so a reload or a copied URL shows nothing. Names can be hidden on the page (Hide names);
+ * shared text always hides them.
  * ---------------------------------------------------------------------------------------- */
 
 export const WEB_REPORT_URL = 'https://spendbyteam.com/report';
 export const WEB_CTA_URL = 'https://app.spendbyteam.com/register?src=cli&cmp=web';
 const WEB_MAX_ROWS = 150;
 
-/** Replaces project and branch names with stable aliases (by cost rank); models and days stay. */
-export function anonymize(r: Report): Report {
-  const views = r.views ?? ({ [r.by]: r.rows } as Record<GroupBy, Row[]>);
-  const alias = (rows: Row[] | undefined, word: string) => {
-    const m = new Map<string, string>();
-    [...(rows ?? [])].sort((a, b) => b.cost - a.cost).forEach((row, i) => m.set(row.key, `${word} ${i + 1}`));
-    return m;
-  };
-  const projects = alias(views.project, 'Project');
-  const branches = alias(views.branch, 'Branch');
-  const sessions = new Map((views.session ?? []).map((row, i) => [row.key, `Session ${i + 1}`]));
-  const map = (by: GroupBy, rows: Row[]): Row[] =>
-    rows.map((row) => ({
-      ...row,
-      key:
-        by === 'project'
-          ? projects.get(row.key) ?? 'Project'
-          : by === 'branch'
-            ? branches.get(row.key) ?? 'Branch'
-            : by === 'session'
-              ? sessions.get(row.key) ?? 'Session'
-              : row.key,
-      ...(row.project !== undefined ? { project: projects.get(row.project) ?? 'Project' } : {}),
-    }));
-  const anonViews = Object.fromEntries(Object.entries(views).map(([k, rows]) => [k, map(k as GroupBy, rows ?? [])])) as Record<GroupBy, Row[]>;
-  return { ...r, rows: anonViews[r.by] ?? [], views: anonViews };
-}
-
-/** The link that opens this report on spendbyteam.com, with anonymized numbers in its fragment. */
+/** The link that opens this report on spendbyteam.com, with the numbers in its fragment (never sent to the server). */
 export function webReportUrl(r: Report, opts: { generatedAt?: Date; deflate: (s: string) => Buffer }): string {
-  const d = { ...reportData(anonymize(r), { generatedAt: opts.generatedAt }), mode: 'web' };
+  const d = { ...reportData(r, { generatedAt: opts.generatedAt }), mode: 'web' };
   const counts = Object.fromEntries(Object.entries(d.views).map(([k, rows]) => [k, rows.length]));
   d.views = Object.fromEntries(Object.entries(d.views).map(([k, rows]) => [k, rows.slice(0, WEB_MAX_ROWS)]));
   return `${WEB_REPORT_URL}#d=${opts.deflate(JSON.stringify({ ...d, counts })).toString('base64url')}`;
