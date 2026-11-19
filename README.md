@@ -25,8 +25,18 @@ Total         $1,086.20             112    2.4B
 **`report` makes no network calls at all.** It only reads those files and prints a table; you can run it with Wi-Fi off. The network code in this package belongs to `connect` and `init`, and runs only when you call them. On a work laptop you may prefer to pin a version instead of pulling the latest each time:
 
 ```bash
-npx spendbyteam@0.2.2 report
-``` Costs use Anthropic's API list prices, including cache reads, 5-minute and 1-hour cache writes, and fast mode.
+npx spendbyteam@0.2.3 report
+```
+
+Costs use Anthropic's API list prices, including cache reads, 5-minute and 1-hour cache writes, and fast mode.
+
+**Claude Code deletes these logs after 30 days by default** ([`cleanupPeriodDays`](https://code.claude.com/docs/en/settings)), so `report` can never look further back than that. It tells you when your logs are on the default and shows the oldest one left. To keep them, add this to `~/.claude/settings.json`:
+
+```json
+{ "cleanupPeriodDays": 3650 }
+```
+
+If your organization sets `cleanupPeriodDays` in managed settings, that value wins and `report` says so.
 
 | Option | |
 |---|---|

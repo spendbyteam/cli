@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildReport, renderReport } from '../src/report.js';
+import { buildReport, cleanupPeriod, renderReport, retentionNote } from '../src/report.js';
 import { costOf, normalizeModel, priceFor } from '../src/pricing.js';
 import { useTempHome } from './helpers.js';
 
@@ -203,6 +203,34 @@ describe('report', () => {
     const text = renderReport(await buildReport({ now: NOW }));
     expect(text).toMatch(/Total\s+\$4\.00/);
     expect(text).toContain('spendbyteam.com');
+  });
+
+  it('warns that Claude Code deletes logs after 30 days by default, with the oldest log date', async () => {
+    process.env.SPENDBYTEAM_MANAGED_SETTINGS = path.join(ctx.home, 'none.json');
+    writeLog(ctx.home, 'a.jsonl', [assistant({ id: 'm1' })]);
+    const old = path.join(ctx.home, '.claude', 'projects', 'p', 'a.jsonl');
+    fs.utimesSync(old, new Date('2026-10-25T10:00:00'), new Date('2026-10-25T10:00:00'));
+    const r = await buildReport({ now: NOW, all: true });
+    expect(r.retention).toEqual({ days: 30, source: 'default', oldestLog: '2026-10-25' });
+    const text = renderReport(r);
+    expect(text).toContain('deletes these logs after 30 days (by default), so the oldest log left on this machine is from 2026-10-25');
+    expect(text).toContain('"cleanupPeriodDays": 3650');
+    delete process.env.SPENDBYTEAM_MANAGED_SETTINGS;
+  });
+
+  it('stays quiet when the user already keeps logs for long, and does not tell users to override managed settings', () => {
+    const managed = path.join(ctx.home, 'managed.json');
+    process.env.SPENDBYTEAM_MANAGED_SETTINGS = managed;
+    fs.mkdirSync(path.join(ctx.home, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(ctx.home, '.claude', 'settings.json'), JSON.stringify({ cleanupPeriodDays: 3650 }));
+    expect(cleanupPeriod()).toEqual({ days: 3650, source: 'settings' });
+    expect(retentionNote({ days: 3650, source: 'settings', oldestLog: null })).toEqual([]);
+    fs.writeFileSync(managed, JSON.stringify({ cleanupPeriodDays: 14 }));
+    expect(cleanupPeriod()).toEqual({ days: 14, source: 'managed' });
+    const note = retentionNote({ days: 14, source: 'managed', oldestLog: null }).join('\n');
+    expect(note).toContain('set by your organization');
+    expect(note).not.toContain('cleanupPeriodDays');
+    delete process.env.SPENDBYTEAM_MANAGED_SETTINGS;
   });
 
   it('rejects a bad --days or --by', async () => {

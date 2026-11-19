@@ -70,6 +70,46 @@ export interface Report {
   total: { cost: number; requests: number; sessions: number; tokens: number };
   unpriced: { model: string; requests: number }[];
   files: number;
+  /** How long Claude Code keeps these logs before deleting them, and the oldest log still on disk. */
+  retention: Retention;
+}
+
+export interface Retention {
+  days: number;
+  source: 'default' | 'settings' | 'managed';
+  oldestLog: string | null;
+}
+
+/** Claude Code's documented default for cleanupPeriodDays. */
+export const DEFAULT_CLEANUP_DAYS = 30;
+
+function readCleanupDays(file: string): number | undefined {
+  try {
+    const v = JSON.parse(fs.readFileSync(file, 'utf8'))?.cleanupPeriodDays;
+    return typeof v === 'number' && Number.isFinite(v) && v >= 1 ? v : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Managed settings win over user settings; without either, Claude Code uses 30 days. */
+export function cleanupPeriod(env: NodeJS.ProcessEnv = process.env, platform = process.platform): { days: number; source: Retention['source'] } {
+  const managed =
+    env.SPENDBYTEAM_MANAGED_SETTINGS ??
+    (platform === 'darwin'
+      ? '/Library/Application Support/ClaudeCode/managed-settings.json'
+      : platform === 'win32'
+        ? 'C:\\Program Files\\ClaudeCode\\managed-settings.json'
+        : '/etc/claude-code/managed-settings.json');
+  const m = readCleanupDays(managed);
+  if (m !== undefined) return { days: m, source: 'managed' };
+  const configured = env.CLAUDE_CONFIG_DIR?.split(',').map((d) => d.trim()).filter(Boolean);
+  const bases = configured?.length ? configured : [path.join(homeDir(), '.claude')];
+  for (const b of bases) {
+    const u = readCleanupDays(path.join(b, 'settings.json'));
+    if (u !== undefined) return { days: u, source: 'settings' };
+  }
+  return { days: DEFAULT_CLEANUP_DAYS, source: 'default' };
 }
 
 /** Where Claude Code keeps its session logs: $CLAUDE_CONFIG_DIR (comma-separated), else ~/.claude and ~/.config/claude. */
@@ -215,6 +255,8 @@ export async function buildReport(opts: ReportOptions = {}): Promise<Report> {
   const dirs = opts.dirs ?? logDirs();
   const files = dirs.flatMap((d) => jsonlFiles(d));
   const { requests, sessionStart } = await readRequests(files, since, opts.onProgress);
+  let oldestMs = Infinity;
+  for (const f of files) oldestMs = Math.min(oldestMs, fs.statSync(f).mtimeMs);
 
   const groups = new Map<
     string,
@@ -287,6 +329,7 @@ export async function buildReport(opts: ReportOptions = {}): Promise<Report> {
     total: { cost: total, requests: [...groups.values()].reduce((n, g) => n + g.requests, 0), sessions: sessions.size, tokens },
     unpriced: [...unpriced.entries()].map(([model, n]) => ({ model, requests: n })).sort((a, b) => b.requests - a.requests),
     files: files.length,
+    retention: { ...cleanupPeriod(), oldestLog: Number.isFinite(oldestMs) ? localDay(oldestMs) : null },
   };
 }
 
@@ -358,13 +401,24 @@ export function renderReport(r: Report): string {
   return finish(r, out);
 }
 
+/** Claude Code deletes session logs after cleanupPeriodDays (30 by default); say so, since this report can't see past it. */
+export function retentionNote(t: Retention): string[] {
+  if (t.days > 90) return [];
+  const since = t.oldestLog ? `, so the oldest log left on this machine is from ${t.oldestLog}` : '';
+  const why = t.source === 'default' ? 'by default' : t.source === 'managed' ? 'set by your organization' : 'set in your settings.json';
+  const lines = ['', `${bold('Heads-up:')} Claude Code deletes these logs after ${t.days} days (${why})${since}.`];
+  if (t.source !== 'managed') lines.push(dim(`To keep them, add "cleanupPeriodDays": 3650 to ~/.claude/settings.json.`));
+  return lines;
+}
+
 function finish(r: Report, out: string[]): string {
   if (r.unpriced.length) {
     out.push('');
     out.push(dim(`Not priced (unknown model): ${r.unpriced.map((u) => `${u.model} × ${u.requests}`).join(', ')}`));
   }
+  out.push(...retentionNote(r.retention));
   out.push('');
-  out.push(`This is one machine. To see it for your whole team, per project and client:`);
+  out.push(`This is one machine. To see it for your whole team, per project and client, with up to 13 months of history:`);
   out.push(`  ${bold('npx spendbyteam connect')}   ${dim(`(free for 3 developers · ${CTA_URL})`)}`);
   return out.join('\n');
 }
