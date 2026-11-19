@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { GroupBy, Report, Row } from './report.js';
 
 /**
@@ -411,6 +412,9 @@ const WEB_BOOT = `(async function(){
 
 /** The static page served at spendbyteam.com/report (HTML + its script; the site's CSP forbids inline scripts). */
 export function webShell(): { html: string; js: string } {
+  const js = `// Generated from cli/src/html.ts (npm run web-shell). Do not edit by hand.\n${APP}\n${WEB_BOOT}\n`;
+  // Cloudflare caches .js for hours; a content hash in the URL makes every change a new URL.
+  const v = createHash('sha256').update(js).digest('hex').slice(0, 10);
   const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -432,10 +436,9 @@ ${STYLE}#empty{max-width:560px;margin:15vh auto;padding:0 16px;text-align:center
 <div id="app" hidden>
 ${BODY(WEB_CTA_URL)}
 </div>
-<script src="/report.js"></script>
+<script src="/report.js?v=${v}"></script>
 </body>
 </html>
 `;
-  const js = `// Generated from cli/src/html.ts (npm run web-shell). Do not edit by hand.\n${APP}\n${WEB_BOOT}\n`;
   return { html, js };
 }

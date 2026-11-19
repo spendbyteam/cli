@@ -96,7 +96,7 @@ describe('web report link', () => {
   it('the web page has no inline script and drops the fragment after reading it', () => {
     const { html, js } = webShell();
     expect(html).not.toMatch(/<script>(?!<\/script>)/);
-    expect(html).toContain('<script src="/report.js"></script>');
+    expect(html).toMatch(/<script src="\/report\.js\?v=[0-9a-f]{10}"><\/script>/);
     expect(js).toContain("history.replaceState(null,'',location.pathname)");
     expect(js).not.toMatch(/fetch\(|XMLHttpRequest|sendBeacon|WebSocket/);
   });
