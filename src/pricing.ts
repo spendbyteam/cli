@@ -52,11 +52,12 @@ export interface Usage {
 
 /** `us.anthropic.claude-opus-4-8-v1:0`, `claude-sonnet-4-5@20250929`, `claude-opus-4-1-20250805` → canonical id. */
 export function normalizeModel(model: string): string {
-  return model
-    .toLowerCase()
-    .replace(/\[.*?\]$/, '')
+  let id = model.toLowerCase();
+  if (id.endsWith(']') && id.includes('[')) id = id.slice(0, id.lastIndexOf('['));
+  const at = id.indexOf('@');
+  if (at !== -1) id = id.slice(0, at);
+  return id
     .replace(/^(?:[a-z]{2,4}\.)?anthropic\./, '')
-    .replace(/@.*$/, '')
     .replace(/-v\d+(?::\d+)?$/, '')
     .replace(/-\d{8}$/, '');
 }

@@ -84,7 +84,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
 
   // 4. Hook script.
   fs.copyFileSync(bundledHookPath(), p.hook);
-  fs.chmodSync(p.hook, 0o755);
+  fs.chmodSync(p.hook, 0o700); // only the user who runs Claude Code needs it
   log.ok(`Installed ${p.hook}`);
 
   // 5. Connectivity test.

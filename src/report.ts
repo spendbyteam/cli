@@ -57,6 +57,8 @@ export interface Row {
   topModel: string;
   /** --by=session: when the session started (ISO) and its project. */
   startedAt?: string;
+  /** --by=session: the session began before the report window; only its turns inside it are counted. */
+  startedBeforeWindow?: boolean;
   project?: string;
 }
 
@@ -146,8 +148,10 @@ async function readRequests(
   files: string[],
   since: number | null,
   onProgress?: (done: number, total: number) => void,
-): Promise<Map<string, Request>> {
+): Promise<{ requests: Map<string, Request>; sessionStart: Map<string, number> }> {
   const requests = new Map<string, Request>();
+  // Earliest turn seen per session, inside the window or not, to tell when a session really began.
+  const sessionStart = new Map<string, number>();
   const project = projectResolver();
   const todo = files.map((file) => ({ file, stat: fs.statSync(file) })).filter(({ stat }) => since === null || stat.mtimeMs >= since);
   const totalBytes = todo.reduce((n, f) => n + f.stat.size, 0);
@@ -167,7 +171,10 @@ async function readRequests(
       const model: unknown = message?.model;
       if (row?.type !== 'assistant' || !usage || typeof model !== 'string' || model === '<synthetic>') continue;
       const at = Date.parse(row.timestamp);
-      if (Number.isNaN(at) || (since !== null && at < since)) continue;
+      if (Number.isNaN(at)) continue;
+      const sessionId: string = row.sessionId ?? file;
+      if (at < (sessionStart.get(sessionId) ?? Infinity)) sessionStart.set(sessionId, at);
+      if (since !== null && at < since) continue;
       // One API response is logged once per content block; the last copy carries the final usage.
       const key = `${message.id ?? row.uuid}:${row.requestId ?? ''}`;
       requests.set(key, {
@@ -181,7 +188,7 @@ async function readRequests(
           cacheWrite: usage.cache_creation_input_tokens ?? 0,
           cacheRead: usage.cache_read_input_tokens ?? 0,
         },
-        session: row.sessionId ?? file,
+        session: sessionId,
         project: project(row.cwd),
         branch: row.gitBranch && row.gitBranch !== 'HEAD' ? row.gitBranch : '(no branch)',
         day: localDay(at),
@@ -190,7 +197,7 @@ async function readRequests(
     }
   }
   onProgress?.(totalBytes, totalBytes);
-  return requests;
+  return { requests, sessionStart };
 }
 
 export async function buildReport(opts: ReportOptions = {}): Promise<Report> {
@@ -207,7 +214,7 @@ export async function buildReport(opts: ReportOptions = {}): Promise<Report> {
 
   const dirs = opts.dirs ?? logDirs();
   const files = dirs.flatMap((d) => jsonlFiles(d));
-  const requests = await readRequests(files, since, opts.onProgress);
+  const { requests, sessionStart } = await readRequests(files, since, opts.onProgress);
 
   const groups = new Map<
     string,
@@ -263,7 +270,11 @@ export async function buildReport(opts: ReportOptions = {}): Promise<Report> {
       split: g.split,
       topModel: [...g.models.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '',
       ...(by === 'session'
-        ? { startedAt: new Date(g.first).toISOString(), project: [...g.projects.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '' }
+        ? {
+            startedAt: new Date(sessionStart.get(key) ?? g.first).toISOString(),
+            startedBeforeWindow: since !== null && (sessionStart.get(key) ?? g.first) < since,
+            project: [...g.projects.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '',
+          }
         : {}),
     }))
     .sort((a, b) => (by === 'day' ? a.key.localeCompare(b.key) : b.cost - a.cost));
@@ -367,9 +378,9 @@ function localDateTime(iso: string): string {
 /** --by=session: the most expensive sessions, with where their tokens went. */
 function renderSessions(r: Report, out: string[]): string {
   const shown = r.rows.slice(0, MAX_ROWS);
-  const header = ['Started', 'Project', 'Cost', 'Turns', 'Input', 'Output', 'Cache write', 'Cache read', 'Model'];
+  const header = [' Started', 'Project', 'Cost', 'Turns', 'Input', 'Output', 'Cache write', 'Cache read', 'Model'];
   const body = shown.map((row) => [
-    localDateTime(row.startedAt!),
+    `${row.startedBeforeWindow ? '≤' : ' '}${localDateTime(row.startedAt!)}`,
     row.project ?? '',
     usd(row.cost),
     String(row.requests),
@@ -396,7 +407,8 @@ function renderSessions(r: Report, out: string[]): string {
   out.push(dim('─'.repeat(widths.reduce((n, w) => n + w + 2, -2))));
   const rest = r.rows.length - shown.length;
   out.push(`${bold(`${r.rows.length} sessions, ${usd(r.total.cost)}`)}${rest > 0 ? dim(`  (top ${shown.length} shown; --json for all)`) : ''}`);
-  out.push(dim('Each turn re-sends the conversation so far, mostly as cheap cache reads: long sessions grow fast. /clear or /compact resets that.'));
+  if (shown.some((row) => row.startedBeforeWindow)) out.push(dim('≤ started before this window; only its turns inside the window are counted.'));
+  out.push(dim('Long sessions re-read their whole context every turn; /clear resets it.'));
   return finish(r, out);
 }
 

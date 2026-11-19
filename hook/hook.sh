@@ -2,23 +2,24 @@
 # SpendByTeam context hook — açık kaynak, sadece aşağıdaki alanları gönderir.
 set -u
 CFG="$HOME/.spendbyteam/config.json"
-[ -r "$CFG" ] || exit 0
+[[ -r "$CFG" ]] || exit 0
 
 INPUT=$(cat)
 SESSION_ID=$(printf '%s' "$INPUT" | jq -r '.session_id // empty')
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty')
 EVENT=$(printf '%s' "$INPUT" | jq -r '.hook_event_name // empty')
-[ -n "$SESSION_ID" ] && [ -n "$CWD" ] || exit 0
+[[ -n "$SESSION_ID" ]] && [[ -n "$CWD" ]] || exit 0
 
 TOKEN=$(jq -r '.token // empty' "$CFG"); ENDPOINT=$(jq -r '.endpoint // empty' "$CFG")
 # Token yalnızca güvenli karakterler (header enjeksiyonu yok); endpoint https (http sadece localhost).
 printf '%s' "$TOKEN" | grep -qE '^sbt_ing_[A-Za-z0-9_-]{1,120}$' || exit 0
-printf '%s' "$ENDPOINT" | grep -qE '^(https://[^[:space:]]+|http://(localhost|127\.0\.0\.1|\[::1\])(:[0-9]+)?(/[^[:space:]]*)?)$' || exit 0
+# http:// is accepted for localhost only (local development); anything else must be https. NOSONAR
+printf '%s' "$ENDPOINT" | grep -qE '^(https://[^[:space:]]+|http://(localhost|127\.0\.0\.1|\[::1\])(:[0-9]+)?(/[^[:space:]]*)?)$' || exit 0 # NOSONAR
 
 REMOTE=$(git -C "$CWD" config --get remote.origin.url 2>/dev/null || true)
 # Commit'siz repo ve detached HEAD'de rev-parse "HEAD" döner: branch yok say.
 BRANCH=$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null) || BRANCH=""
-[ "$BRANCH" = "HEAD" ] && BRANCH=""
+[[ "$BRANCH" = "HEAD" ]] && BRANCH=""
 TICKET=$(printf '%s' "$BRANCH" | grep -oE '[A-Z][A-Z0-9]+-[0-9]+' | head -1 || true)
 
 # Remote URL'den kimlik bilgisini (scheme://user:token@host/...), query ve fragment'ı temizle.

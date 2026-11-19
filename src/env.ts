@@ -31,7 +31,9 @@ export function normalizeEndpoint(endpoint: string | undefined): string {
   if (url.username || url.password || url.search || url.hash) {
     throw new UsageError('--endpoint must not contain credentials, query or fragment.');
   }
-  return url.toString().replace(/\/+$/, '');
+  let out = url.toString();
+  while (out.endsWith('/')) out = out.slice(0, -1);
+  return out;
 }
 
 export function validateTeamId(teamId: string | undefined): string | undefined {

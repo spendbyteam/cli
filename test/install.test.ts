@@ -36,7 +36,7 @@ describe('init', () => {
     expect(mode(sbt('state.json'))).toBe(0o600);
 
     expect(fs.readFileSync(sbt('hook.sh'), 'utf8')).toBe(fs.readFileSync(bundledHookPath(), 'utf8'));
-    expect(mode(sbt('hook.sh'))).toBe(0o755);
+    expect(mode(sbt('hook.sh'))).toBe(0o700);
   });
 
   it('backs up existing settings before merging and keeps user keys', async () => {

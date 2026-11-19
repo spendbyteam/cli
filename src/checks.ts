@@ -23,7 +23,7 @@ export function missingDeps(envPath?: string): string[] {
 }
 
 export function parseVersion(text: string): [number, number, number] | undefined {
-  const m = /(\d+)\.(\d+)\.(\d+)/.exec(text);
+  const m = /(\d{1,9})\.(\d{1,9})\.(\d{1,9})/.exec(text);
   if (!m) return undefined;
   return [Number(m[1]), Number(m[2]), Number(m[3])];
 }

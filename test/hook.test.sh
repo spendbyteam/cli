@@ -17,8 +17,8 @@ done
 SYS_PATH="$(dirname "$(command -v jq)"):$(dirname "$(command -v git)"):/usr/bin:/bin"
 
 ok()   { PASS=$((PASS + 1)); echo "  ok   $1"; }
-fail() { FAIL=$((FAIL + 1)); echo "  FAIL $1"; [ $# -gt 1 ] && echo "       $2"; }
-assert_eq() { if [ "$2" = "$3" ]; then ok "$1"; else fail "$1" "expected [$3], got [$2]"; fi; }
+fail() { FAIL=$((FAIL + 1)); echo "  FAIL $1"; [[ $# -gt 1 ]] && echo "       $2"; }
+assert_eq() { if [[ "$2" = "$3" ]]; then ok "$1"; else fail "$1" "expected [$3], got [$2]"; fi; }
 
 # Fresh HOME + fake curl for each case.
 setup() {
@@ -45,7 +45,7 @@ make_repo() { # dir branch remote
   mkdir -p "$1"
   git -C "$1" init -q -b "$2"
   git -C "$1" -c user.email=t@example.com -c user.name=t commit -q --allow-empty -m init
-  [ -n "${3:-}" ] && git -C "$1" remote add origin "$3"
+  [[ -n "${3:-}" ]] && git -C "$1" remote add origin "$3"
   return 0
 }
 
@@ -109,14 +109,14 @@ setup
 rm "$HOME/.spendbyteam/config.json"
 run_hook '{"session_id":"s5","cwd":"/tmp","hook_event_name":"SessionStart"}'
 assert_eq "no config exits 0" "$RC" 0
-[ -e "$T/out/body" ] && fail "no config: nothing sent" || ok "no config: nothing sent"
+[[ -e "$T/out/body" ]] && fail "no config: nothing sent" || ok "no config: nothing sent"
 
 # 6. Missing session_id / cwd / garbage input → no request.
 for input in '{"cwd":"/tmp"}' '{"session_id":"x"}' 'not json' ''; do
   setup
   run_hook "$input"
   assert_eq "bad input [$input] exits 0" "$RC" 0
-  [ -e "$T/out/body" ] && fail "bad input [$input]: nothing sent" || ok "bad input [$input]: nothing sent"
+  [[ -e "$T/out/body" ]] && fail "bad input [$input]: nothing sent" || ok "bad input [$input]: nothing sent"
 done
 
 # 7. curl failing (network down) must not fail the hook.
@@ -130,13 +130,13 @@ assert_eq "curl failure still exits 0" "$RC" 0
 setup
 mkdir -p "$T/nojq"
 for b in bash git cat sed grep head date dirname env printf; do
-  p="$(PATH="$SYS_PATH" command -v "$b" 2>/dev/null)" && [ -n "$p" ] && [ "${p#/}" != "$p" ] && ln -sf "$p" "$T/nojq/$b"
+  p="$(PATH="$SYS_PATH" command -v "$b" 2>/dev/null)" && [[ -n "$p" ]] && [[ "${p#/}" != "$p" ]] && ln -sf "$p" "$T/nojq/$b"
 done
 ln -sf "$T/bin/curl" "$T/nojq/curl"
 printf '{"session_id":"s8","cwd":"/tmp","hook_event_name":"SessionStart"}' | PATH="$T/nojq" "$T/nojq/bash" "$HOOK" >/dev/null 2>&1
 RC=$?
 assert_eq "missing jq exits 0" "$RC" 0
-[ -e "$T/out/body" ] && fail "missing jq: nothing sent" || ok "missing jq: nothing sent"
+[[ -e "$T/out/body" ]] && fail "missing jq: nothing sent" || ok "missing jq: nothing sent"
 
 # 9. Repo without commits (unborn branch) → empty branch, never the literal "HEAD".
 setup
@@ -186,7 +186,7 @@ run_hook "$SID"
 assert_eq "weird input exits 0" "$RC" 0
 assert_eq "session_id JSON-escaped round trip" "$(jq -r .session_id "$T/out/body")" "$(printf 'a"b\nc}')"
 assert_eq "branch with quotes round trip" "$(jq -r .branch "$T/out/body")" 'feat/"x"-ABC-1'
-[ -e "$T/pwned" ] || [ -e "$T/pwned2" ] && fail "no command execution from cwd" || ok "no command execution from cwd"
+[[ -e "$T/pwned" ]] || [[ -e "$T/pwned2" ]] && fail "no command execution from cwd" || ok "no command execution from cwd"
 assert_eq "payload keys unchanged with weird input" "$(jq -c 'keys' "$T/out/body")" '["at","branch","event","repo_url","session_id","ticket"]'
 
 # 14. Tampered config: plain-http endpoint, header injection in token → nothing sent.
@@ -199,7 +199,7 @@ for cfg in '{"token":"sbt_ing_abc","endpoint":"http://evil.example.com"}' \
   make_repo "$T/r14" "main" ""
   run_hook "{\"session_id\":\"s14\",\"cwd\":\"$T/r14\",\"hook_event_name\":\"SessionStart\"}"
   assert_eq "bad config exits 0 [$cfg]" "$RC" 0
-  [ -e "$T/out/body" ] && fail "bad config: nothing sent [$cfg]" || ok "bad config: nothing sent [$cfg]"
+  [[ -e "$T/out/body" ]] && fail "bad config: nothing sent [$cfg]" || ok "bad config: nothing sent [$cfg]"
 done
 
 # 15. http://localhost stays allowed (development).
@@ -211,4 +211,4 @@ grep -qx "http://127.0.0.1:4319/v1/context" "$T/out/args" && ok "localhost http 
 
 echo
 echo "$PASS passed, $FAIL failed"
-[ "$FAIL" -eq 0 ]
+[[ "$FAIL" -eq 0 ]]

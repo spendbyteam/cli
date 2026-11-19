@@ -146,6 +146,25 @@ describe('report', () => {
     expect(text).toContain('2 sessions');
   });
 
+  it('marks sessions that began before the window and counts only their turns inside it', async () => {
+    writeLog(ctx.home, 'a.jsonl', [
+      assistant({ id: 'm1', session: 'long', at: '2026-10-01T08:00:00Z' }),
+      assistant({ id: 'm2', session: 'long', at: '2026-11-18T08:00:00Z' }),
+      assistant({ id: 'm3', session: 'fresh', at: '2026-11-18T09:00:00Z' }),
+    ]);
+    const r = await buildReport({ now: NOW, days: 7, by: 'session' });
+    const long = r.rows.find((x) => x.key === 'long')!;
+    const fresh = r.rows.find((x) => x.key === 'fresh')!;
+
+    expect(long.requests).toBe(1);
+    expect(long.startedAt).toBe('2026-10-01T08:00:00.000Z');
+    expect(long.startedBeforeWindow).toBe(true);
+    expect(fresh.startedBeforeWindow).toBe(false);
+    const text = renderReport(r);
+    expect(text).toContain('≤2026-10-01');
+    expect(text).toContain('started before this window');
+  });
+
   it('reports reading progress up to the total', async () => {
     writeLog(ctx.home, 'a.jsonl', [assistant({ id: 'm1' })]);
     const seen: [number, number][] = [];

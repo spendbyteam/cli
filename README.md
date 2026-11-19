@@ -20,7 +20,13 @@ infra           $118.40    11%         9  250.1M  sonnet-5-5
 Total         $1,086.20             112    2.4B
 ```
 
-`report` reads the session logs Claude Code already keeps on your machine (`~/.claude/projects`, or `$CLAUDE_CONFIG_DIR`). It works offline and **sends nothing anywhere**. Costs use Anthropic's API list prices, including cache reads, 5-minute and 1-hour cache writes, and fast mode.
+`report` reads the session logs Claude Code already keeps on your machine (`~/.claude/projects`, or `$CLAUDE_CONFIG_DIR`). It works offline and **sends nothing anywhere**.
+
+**`report` makes no network calls at all.** It only reads those files and prints a table; you can run it with Wi-Fi off. The network code in this package belongs to `connect` and `init`, and runs only when you call them. On a work laptop you may prefer to pin a version instead of pulling the latest each time:
+
+```bash
+npx spendbyteam@0.2.2 report
+``` Costs use Anthropic's API list prices, including cache reads, 5-minute and 1-hour cache writes, and fast mode.
 
 | Option | |
 |---|---|

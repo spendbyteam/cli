@@ -1,6 +1,6 @@
 {
   "name": "spendbyteam",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "See what Claude Code costs per project, model, branch or day (offline), and connect it to SpendByTeam for your team.",
   "license": "MIT",
   "homepage": "https://spendbyteam.com/docs/install",
