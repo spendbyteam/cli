@@ -109,12 +109,29 @@ footer{color:var(--ink3);font-size:.78rem;margin-top:18px}footer a{color:inherit
 code{font:.85em ui-monospace,SFMono-Regular,Menlo,monospace}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 @media print{
-  body{background:#fff;color:#000;font-size:11px}
-  .no-print,.tools,.pager,.tabs,.menu,.tip,.toast{display:none!important}
-  .panel,.kpi,.cta{break-inside:avoid;border-color:#ddd}
+  @page{margin:12mm}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  :root{color-scheme:light;--bg:#fff;--card:#fff;--ink:#000;--ink2:#2b2b2b;--ink3:#4a4a4a;--rule:#cfcfcf;--grid:#e3e3e3;--accent:#5a46d0;--accent-soft:#e6e2ff;--warn:#fff6e0;--warnb:#e2c47c;
+    --s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--other:#9a9993}
+  body{background:#fff;color:#000;font-size:10.5pt}
   main{padding:0;max-width:none}
+  .no-print,.tools,.pager,.tabs,.menu,.tip,.toast,.cta .btn{display:none!important}
+  .panel,.kpi,.cta,.note{break-inside:avoid;border-color:var(--rule)}
+  .kpi{padding:10px 12px}.kpi .v{font-size:15pt}.kpi .l{font-size:8.5pt}.kpi .h{font-size:8pt;white-space:normal}
   .grid2{grid-template-columns:2fr 1fr}
-  .print-title{display:block!important;font-size:.8rem;color:#555;margin:0 0 8px}
+  .panel h2{color:#000}
+  .legend li{font-size:9pt}
+  table{table-layout:fixed;width:100%}
+  th:first-child{width:44%}
+  .tablewrap{overflow:visible}
+  thead{display:table-header-group}tfoot{display:table-row-group}
+  tr{break-inside:avoid}
+  th{font-size:8pt;color:#000;padding:6px 8px}
+  td{padding:4px 8px;font-size:9pt;line-height:1.3}
+  td.k .bar{height:3px;margin-top:2px}
+  .panel{padding:12px}
+  .print-title{display:block!important;font-size:10pt;font-weight:650;color:#000;margin:0 0 8px}
+  .cta{background:#fff}
 }
 .print-title{display:none}
 `;
@@ -257,7 +274,7 @@ function stack(target,items){
 })();
 
 /* ---- table: tabs, filter, sort, pagination ---- */
-const PAGE=25;let tab=V[D.by]?D.by:Object.keys(V)[0],q='',sortK='cost',sortDir=-1,page=0,printing=false;
+const PAGE=25,PRINT_ROWS=40;let tab=V[D.by]?D.by:Object.keys(V)[0],q='',sortK='cost',sortDir=-1,page=0,printing=false;
 const COLS={
   default:[['key','',0],['cost','Cost',1],['share','Share',1],['sessions','Sessions',1],['tokens','Tokens',1],['model','Model',0]],
   session:[['started','Started',0],['cost','Cost',1],['requests','Turns',1],['tokens','Tokens',1],['cache','Cache read',1],['model','Model',0]],
@@ -273,7 +290,7 @@ function rowsNow(){
 }
 function draw(){
   const tbl=$('tbl'),C=cols(),rows=rowsNow(),pages=Math.max(1,Math.ceil(rows.length/PAGE));page=Math.min(page,pages-1);
-  const shown=printing?rows:rows.slice(page*PAGE,page*PAGE+PAGE);
+  const shown=printing?rows.slice(0,PRINT_ROWS):rows.slice(page*PAGE,page*PAGE+PAGE);
   const head=el('tr');C.forEach(([k,label,num],i)=>{const th=el('th',{class:num?'n':'',text:i===0&&!label?ONE[tab]:label,style:i===0?'width:44%':''});if(k===sortK)th.setAttribute('aria-sort',sortDir>0?'ascending':'descending');th.onclick=()=>{if(sortK===k)sortDir=-sortDir;else{sortK=k;sortDir=num?-1:1;}draw();};head.appendChild(th);});
   tbl.tHead.replaceChildren(head);
   const body=document.createDocumentFragment(),max=Math.max(...(views[tab]||[]).map(r=>r.cost),1e-9);
@@ -281,10 +298,15 @@ function draw(){
     if(i===0){td=el('td',{class:'k'});const label=tab==='session'?(r.before?'≤ ':'')+(r.started||'').slice(0,16).replace('T',' '):r.key;td.appendChild(el('span',{class:'t',text:label,title:label}));if(tab==='session'&&r.project)td.appendChild(el('small',{text:r.project,title:r.project}));td.appendChild(el('div',{class:'bar'},[el('span',{style:'width:'+Math.max(.5,r.cost/max*100).toFixed(1)+'%'})]));}
     else{const v=k==='cost'?usd(r.cost):k==='share'?pct(T.cost?r.cost/T.cost:0):k==='tokens'?cmp(r.tokens):k==='cache'?pct(val(r,'cache')):k==='model'?(tab==='model'?'':r.model):String(r[k]);td=el('td',{class:num?'n':'',text:v});}
     tr.appendChild(td);});body.appendChild(tr);});
+  if(printing&&rows.length>PRINT_ROWS){const rest=rows.slice(PRINT_ROWS),rc=rest.reduce((n,r)=>n+r.cost,0);
+    body.appendChild(el('tr',{},[el('td',{class:'k',text:'… '+rest.length+' more '+NAMES[tab].toLowerCase()}),el('td',{class:'n',text:usd(rc)}),el('td',{class:'n',text:tab==='session'?'':pct(T.cost?rc/T.cost:0)}),el('td'),el('td'),el('td')]));}
   if(!shown.length)body.appendChild(el('tr',{},[el('td',{colspan:'6',text:q?'No rows match “'+q+'”.':'No data.'})]));
   tbl.tBodies[0].replaceChildren(body);
   const fc=rows.reduce((n,r)=>n+r.cost,0),ft=rows.reduce((n,r)=>n+r.tokens,0);
-  const f=el('tr',{},[el('td',{text:q?'Filtered total':'Total'}),el('td',{class:'n',text:usd(fc)}),el('td',{class:'n',text:tab==='session'?String(rows.reduce((n,r)=>n+r.requests,0)):pct(T.cost?fc/T.cost:0)}),el('td',{class:'n',text:tab==='session'?cmp(ft):String(tab==='session'?'':rows.reduce((n,r)=>n+r.sessions,0))}),el('td',{class:'n',text:tab==='session'?'':cmp(ft)}),el('td')]);
+  const cells=tab==='session'
+    ?[q?'Filtered total':'Total',usd(fc),String(rows.reduce((n,r)=>n+r.requests,0)),cmp(ft),'','']
+    :[q?'Filtered total':'Total',usd(fc),pct(T.cost?fc/T.cost:0),q?'':String(T.sessions),cmp(ft),''];
+  const f=el('tr',{},cells.map((t,i)=>el('td',{class:i&&i<5?'n':'',text:t})));
   tbl.tFoot.replaceChildren(f);
   const full=(D.counts&&D.counts[tab])||(views[tab]||[]).length;
   $('count').textContent=rows.length+' of '+(views[tab]||[]).length+' '+NAMES[tab].toLowerCase()+(full>(views[tab]||[]).length?' (top '+(views[tab]||[]).length+' of '+full+' in this link)':'');
