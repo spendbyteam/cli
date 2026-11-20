@@ -15,7 +15,7 @@ import { consoleLogger } from './log.js';
 const HELP = `spendbyteam — see and share what Claude Code costs (metrics only, no prompts or code)
 
 Usage:
-  npx spendbyteam report [--days=30 | --all] [--by=project|model|branch|day|session] [--json] [--web | --local | --no-web]
+  npx spendbyteam report [--days=30 | --all] [--by=project|model|agent|branch|day|session] [--json] [--web | --local | --no-web]
   npx spendbyteam connect [--team-id=ID] [--no-browser]
   npx spendbyteam init --token=sbt_ing_... [--endpoint=URL] [--team-id=ID] [--no-ping]
   npx spendbyteam uninstall
@@ -41,7 +41,7 @@ Options:
   --no-ping      Skip the GET /v1/ping connectivity test.
   --days         report: how many days back to look, including today (default 30).
   --all          report: everything in the logs.
-  --by           report: group by project (default), model, branch, day or session.
+  --by           report: group by project (default), model, agent (main session vs. subagent types), branch, day or session.
   --json         report: print JSON instead of a table.
   --web          report: open it on spendbyteam.com; the numbers ride in the link (after #), nothing is stored (asked by default).
   --local        report: open it as a local HTML file instead, fully offline.

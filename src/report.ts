@@ -15,8 +15,11 @@ import { openInBrowser } from './connect.js';
  * is sent anywhere and no account or token is needed.
  */
 
-export type GroupBy = 'project' | 'model' | 'branch' | 'day' | 'session';
-export const GROUPS: GroupBy[] = ['project', 'model', 'branch', 'day', 'session'];
+export type GroupBy = 'project' | 'model' | 'agent' | 'branch' | 'day' | 'session';
+export const GROUPS: GroupBy[] = ['project', 'model', 'agent', 'branch', 'day', 'session'];
+
+/** --by=agent: turns of the session itself, as opposed to the subagents it started. */
+export const MAIN_AGENT = 'Main session';
 
 export interface ReportOptions {
   days?: number;
@@ -51,6 +54,8 @@ interface Request {
   tokens: number;
   split: TokenSplit;
   session: string;
+  /** MAIN_AGENT, or the subagent's type (Explore, general-purpose, a custom agent…). */
+  agent: string;
   project: string;
   branch: string;
   day: string;
@@ -79,6 +84,8 @@ export interface Report {
   by: GroupBy;
   rows: Row[];
   total: { cost: number; requests: number; sessions: number; tokens: number };
+  /** What subagents cost, already included in the total and in their parent session's row. */
+  subagents: { cost: number; requests: number };
   unpriced: { model: string; requests: number }[];
   files: number;
   /** How long Claude Code keeps these logs before deleting them, and the oldest log still on disk. */
@@ -139,6 +146,22 @@ function jsonlFiles(dir: string, out: string[] = []): string[] {
     else if (entry.isFile() && entry.name.endsWith('.jsonl')) out.push(full);
   }
   return out;
+}
+
+/**
+ * Subagent transcripts sit in <session>/subagents/agent-<id>.jsonl next to an agent-<id>.meta.json
+ * that names the agent type. Their rows carry the parent's sessionId, so they count toward that session.
+ * Older Claude Code versions wrote subagent turns into the session file itself, marked isSidechain.
+ */
+function agentOfFile(file: string): string | undefined {
+  if (path.basename(path.dirname(file)) !== 'subagents') return undefined;
+  try {
+    const t = JSON.parse(fs.readFileSync(file.replace(/\.jsonl$/, '.meta.json'), 'utf8'))?.agentType;
+    if (typeof t === 'string' && t.trim()) return t.trim();
+  } catch {
+    // no or unreadable meta file: still a subagent, just of unknown type
+  }
+  return 'Subagent';
 }
 
 /** Maps a working directory to its repository root's name, so sub-folders of one repo count as one project. */
@@ -211,6 +234,7 @@ async function readRequests(
   let doneBytes = 0;
   for (const { file, stat } of todo) {
     onProgress?.(doneBytes, totalBytes);
+    const fileAgent = agentOfFile(file);
     doneBytes += stat.size;
     for await (const line of usageLines(file)) {
       let row: any;
@@ -242,6 +266,7 @@ async function readRequests(
           cacheRead: usage.cache_read_input_tokens ?? 0,
         },
         session: sessionId,
+        agent: fileAgent ?? (row.isSidechain === true ? 'Subagent' : MAIN_AGENT),
         project: project(row.cwd),
         branch: row.gitBranch && row.gitBranch !== 'HEAD' ? row.gitBranch : '(no branch)',
         day: localDay(at),
@@ -280,6 +305,7 @@ export async function buildReport(opts: ReportOptions = {}): Promise<Report> {
   const sessions = new Set(priced.map((r) => r.session));
   const total = priced.reduce((n, r) => n + r.cost!, 0);
   const tokens = priced.reduce((n, r) => n + r.tokens, 0);
+  const sub = priced.filter((r) => r.agent !== MAIN_AGENT);
   const first = priced.reduce((n, r) => Math.min(n, r.at), Infinity);
   const rows = groupRows(priced, by, total, sessionStart, since);
   const views = opts.views ? (Object.fromEntries(GROUPS.map((g) => [g, g === by ? rows : groupRows(priced, g, total, sessionStart, since)])) as Record<GroupBy, Row[]>) : undefined;
@@ -290,6 +316,7 @@ export async function buildReport(opts: ReportOptions = {}): Promise<Report> {
     by,
     rows,
     total: { cost: total, requests: priced.length, sessions: sessions.size, tokens },
+    subagents: { cost: sub.reduce((n, r) => n + r.cost!, 0), requests: sub.length },
     unpriced: [...unpriced.entries()].map(([model, n]) => ({ model, requests: n })).sort((a, b) => b.requests - a.requests),
     files: files.length,
     retention: { ...cleanupPeriod(), oldestLog: Number.isFinite(oldestMs) ? localDay(oldestMs) : null },
@@ -358,7 +385,7 @@ const style = (code: string) => (s: string) => (process.stdout.isTTY && !process
 const bold = style('1');
 const dim = style('2');
 
-const HEADINGS: Record<GroupBy, string> = { project: 'Project', model: 'Model', branch: 'Branch', day: 'Day', session: 'Session' };
+const HEADINGS: Record<GroupBy, string> = { project: 'Project', model: 'Model', agent: 'Agent', branch: 'Branch', day: 'Day', session: 'Session' };
 const MAX_ROWS = 15;
 export const CTA_URL = 'https://spendbyteam.com/?utm_source=cli&utm_medium=report';
 
@@ -431,6 +458,10 @@ function finish(r: Report, out: string[]): string {
   if (r.unpriced.length) {
     out.push('');
     out.push(dim(`Not priced (unknown model): ${r.unpriced.map((u) => `${u.model} × ${u.requests}`).join(', ')}`));
+  }
+  if (r.by !== 'agent' && r.subagents.cost > 0 && r.total.cost > 0) {
+    out.push('');
+    out.push(dim(`Subagents: ${usd(r.subagents.cost)} (${Math.round((r.subagents.cost / r.total.cost) * 100)}%) of this, counted in their parent session. By type: --by=agent`));
   }
   out.push(...retentionNote(r.retention));
   out.push('');

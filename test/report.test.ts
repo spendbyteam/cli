@@ -102,6 +102,29 @@ describe('report', () => {
     ]);
   });
 
+  it('--by=agent splits the main session from each subagent type, and subagents stay in their parent session', async () => {
+    const sub = path.join(ctx.home, '.claude', 'projects', 'p', 's1', 'subagents');
+    writeLog(ctx.home, 'a.jsonl', [
+      assistant({ id: 'm1' }),
+      JSON.stringify({ ...JSON.parse(assistant({ id: 'old-side' })), isSidechain: true }),
+    ]);
+    writeLog(ctx.home, 'agent-1.jsonl', [assistant({ id: 'e1' }), assistant({ id: 'e2' }), assistant({ id: 'e3' })], sub);
+    fs.writeFileSync(path.join(sub, 'agent-1.meta.json'), JSON.stringify({ agentType: 'Explore' }));
+    writeLog(ctx.home, 'agent-2.jsonl', [assistant({ id: 'x1' })], sub); // no meta file
+    const r = await buildReport({ now: NOW, by: 'agent' });
+    expect(r.rows.map((x) => [x.key, x.requests])).toEqual([
+      ['Explore', 3],
+      ['Subagent', 2],
+      ['Main session', 1],
+    ]);
+    expect(r.subagents.requests).toBe(5);
+    expect(r.subagents.cost).toBeCloseTo((r.total.cost * 5) / 6, 6);
+    const bySession = await buildReport({ now: NOW, by: 'session' });
+    expect(bySession.rows.map((x) => [x.key, x.requests])).toEqual([['s1', 6]]);
+    expect(renderReport(bySession)).toContain('Subagents: $');
+    expect(renderReport(r)).not.toContain('Subagents: $');
+  });
+
   it('keeps only the requested days, counted in local time, and --all ignores the window', async () => {
     writeLog(ctx.home, 'a.jsonl', [
       assistant({ id: 'old', at: '2026-10-01T09:00:00Z' }),

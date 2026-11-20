@@ -199,18 +199,19 @@ const usd=n=>'$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFracti
 const usd0=n=>n>=1000?'$'+Math.round(n).toLocaleString('en-US'):usd(n);
 const cmp=n=>n>=1e9?(n/1e9).toFixed(1)+'B':n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(1)+'K':String(n);
 const pct=x=>(x*100>=10?Math.round(x*100):(x*100).toFixed(1))+'%';
-const NAMES={project:'Projects',model:'Models',branch:'Branches',day:'Days',session:'Sessions'};
-const ONE={project:'Project',model:'Model',branch:'Branch',day:'Day',session:'Session'};
+const NAMES={project:'Projects',model:'Models',agent:'Agents',branch:'Branches',day:'Days',session:'Sessions'};
+const ONE={project:'Project',model:'Model',agent:'Agent',branch:'Branch',day:'Day',session:'Session'};
 const V=D.views, T=D.total;
 const row=a=>({key:a[0],cost:a[1],requests:a[2],sessions:a[3],tokens:a[4],split:a[5],model:a[6],started:a[7],project:a[8],before:a[9]});
 const views={};for(const k in V)views[k]=V[k].map(row);
-/* Names: shown by default; "Hide names" swaps projects and branches for Project 1, Branch 2… (by cost).
+/* Names: shown by default; "Hide names" swaps projects, branches and subagent types for Project 1, Branch 2, Agent 3… (by cost).
    Shared text (summary, post on X) always uses the hidden names. */
 let hideNames=false;
-const ALIAS={project:new Map(),branch:new Map()};
-['project','branch'].forEach(k=>(views[k]||[]).slice().sort((a,b)=>b.cost-a.cost).forEach((r,i)=>ALIAS[k].set(r.key,(k==='project'?'Project ':'Branch ')+(i+1))));
-const aliasOf=(k,name)=>ALIAS[k].get(name)||(k==='project'?'Project':'Branch');
-const nm=(k,name,force)=>(hideNames||force)&&(k==='project'||k==='branch')?aliasOf(k,name):name;
+const ALIAS={project:new Map(),branch:new Map(),agent:new Map()};const AL={project:'Project',branch:'Branch',agent:'Agent'};
+/* Custom subagent names can say as much as a project name; the main session needs no alias. */
+['project','branch','agent'].forEach(k=>(views[k]||[]).filter(r=>!(k==='agent'&&r.key==='Main session')).sort((a,b)=>b.cost-a.cost).forEach((r,i)=>ALIAS[k].set(r.key,AL[k]+' '+(i+1))));
+const aliasOf=(k,name)=>ALIAS[k].get(name)||(k==='agent'&&name==='Main session'?name:AL[k]);
+const nm=(k,name,force)=>(hideNames||force)&&AL[k]?aliasOf(k,name):name;
 
 /* ---- header + KPIs ---- */
 const dayCount=D.from?Math.round((Date.parse(D.to)-Date.parse(D.from))/864e5)+1:0;

@@ -25,7 +25,7 @@ Total         $1,086.20             112    2.4B
 **`report` makes no network calls at all.** (Opening the browser view loads a page from spendbyteam.com, see below; `--local` doesn't.) It only reads those files and prints a table; you can run it with Wi-Fi off. The network code in this package belongs to `connect` and `init`, and runs only when you call them. On a work laptop you may prefer to pin a version instead of pulling the latest each time:
 
 ```bash
-npx spendbyteam@0.4.1 report
+npx spendbyteam@0.5.0 report
 ```
 
 Costs use Anthropic's API list prices, including cache reads, 5-minute and 1-hour cache writes, and fast mode.
@@ -38,7 +38,7 @@ By default it opens **spendbyteam.com/report**. The numbers travel in the part o
 
 `--local` opens a local HTML file instead, with no network at all (it's also what happens on Windows, where the link would be too long).
 
-Either way you get a cost-per-day chart, the split by model and token type, and tabs for projects, models, branches, days and sessions with filter, sorting and paging; **Save as PDF** (print dialog), **Export CSV**, and **Share** (copy a summary, or a pre-filled post on X).
+Either way you get a cost-per-day chart, the split by model and token type, and tabs for projects, models, agents, branches, days and sessions with filter, sorting and paging; **Save as PDF** (print dialog), **Export CSV**, and **Share** (copy a summary, or a pre-filled post on X).
 
 `report` itself still makes no network calls. Only your browser does, to load the page.
 
@@ -54,7 +54,7 @@ If your organization sets `cleanupPeriodDays` in managed settings, that value wi
 |---|---|
 | `--days=N` | Last N days, including today (default 30) |
 | `--all` | Everything in the logs |
-| `--by=project\|model\|branch\|day\|session` | How to group (default `project`; sub-folders of a git repo count as one project). `session` lists your most expensive sessions with turns and the input / output / cache-write / cache-read split |
+| `--by=project\|model\|agent\|branch\|day\|session` | How to group (default `project`; sub-folders of a git repo count as one project). `agent` splits the main session from each subagent type (Explore, general-purpose, your own agents); subagent cost is also counted in its parent session. `session` lists your most expensive sessions with turns and the input / output / cache-write / cache-read split |
 | `--json` | Machine-readable output |
 
 ## Track it for the whole team
