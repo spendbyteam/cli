@@ -12,7 +12,7 @@ Answer with real numbers from this machine's Claude Code session logs (`~/.claud
 Pick the grouping and window from the question, then run:
 
 ```bash
-npx --yes spendbyteam@0.5.0 report --json --no-web --days=30 --by=project
+npx --yes spendbyteam@0.5.1 report --json --no-web --days=30 --by=project
 ```
 
 - `--by=` one of `project` (default), `model`, `agent` (main session vs. each subagent type), `branch`, `day`, `session`

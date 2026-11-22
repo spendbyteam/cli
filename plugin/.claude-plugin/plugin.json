@@ -1,7 +1,7 @@
 {
   "name": "spendbyteam",
   "displayName": "SpendByTeam",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "See what Claude Code costs per project, model, branch or day from your local session logs, and set up team spend tracking on SpendByTeam.",
   "author": {
     "name": "SpendByTeam",

@@ -22,7 +22,7 @@ Full list of what leaves the machine: https://github.com/spendbyteam/cli#what-ge
 Run it in the background, because it waits for the user to approve in the browser:
 
 ```bash
-npx --yes spendbyteam@0.5.0 connect
+npx --yes spendbyteam@0.5.1 connect
 ```
 
 It prints a short code and opens the browser. Tell the user to sign up or log in, check the code matches, and click **Connect**. On a server or over SSH, add `--no-browser` and give the user the printed link.
@@ -32,21 +32,21 @@ When it finishes, a **new** Claude Code session is needed for the telemetry sett
 ## Check or fix
 
 ```bash
-npx --yes spendbyteam@0.5.0 doctor
+npx --yes spendbyteam@0.5.1 doctor
 ```
 
 Report each failing line with its fix. Common ones: `jq`, `git` or `curl` missing (the branch hook sends nothing without them; cost metrics still work), or an old Claude Code version (`claude update`).
 
-`npx --yes spendbyteam@0.5.0 status` shows what is installed.
+`npx --yes spendbyteam@0.5.1 status` shows what is installed.
 
 ## Remove
 
 ```bash
-npx --yes spendbyteam@0.5.0 uninstall
+npx --yes spendbyteam@0.5.1 uninstall
 ```
 
 Undoes everything `connect`/`init` changed in `settings.json`. Then the user can disable or uninstall this plugin with `/plugin`.
 
 ## Team admins
 
-To roll out to a whole Team or Enterprise org without each developer running `connect`, `npx --yes spendbyteam@0.5.0 print-managed --token=sbt_ing_...` prints a managed-settings block. Developers still run `connect` (or `init`) once for branch and ticket attribution.
+To roll out to a whole Team or Enterprise org without each developer running `connect`, `npx --yes spendbyteam@0.5.1 print-managed --token=sbt_ing_...` prints a managed-settings block. Developers still run `connect` (or `init`) once for branch and ticket attribution.

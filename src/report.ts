@@ -88,6 +88,8 @@ export interface Report {
   subagents: { cost: number; requests: number };
   unpriced: { model: string; requests: number }[];
   files: number;
+  /** Context compactions in the window. Their summary call's cost is not in the logs, so not in the totals. */
+  compactions: number;
   /** How long Claude Code keeps these logs before deleting them, and the oldest log still on disk. */
   retention: Retention;
   /** Present when built with views: the same data grouped every way. */
@@ -199,9 +201,13 @@ const USAGE = Buffer.from('"usage"');
  * output, so lines are filtered as bytes and only the matches are decoded: decoding every line was
  * four times slower than reading the files.
  */
+/** Claude Code logs a compaction as a boundary marker plus a summary, without the usage of the call that wrote it. */
+const COMPACT = Buffer.from('"compact_boundary"');
+
 async function* usageLines(file: string): AsyncGenerator<string> {
   let parts: Buffer[] = [];
-  const emit = (line: Buffer) => (line.indexOf(ASSISTANT) !== -1 && line.indexOf(USAGE) !== -1 ? line.toString('utf8') : undefined);
+  const emit = (line: Buffer) =>
+    (line.indexOf(ASSISTANT) !== -1 && line.indexOf(USAGE) !== -1) || line.indexOf(COMPACT) !== -1 ? line.toString('utf8') : undefined;
   for await (const chunk of fs.createReadStream(file, { highWaterMark: 1 << 20 }) as AsyncIterable<Buffer>) {
     let start = 0;
     for (let nl = chunk.indexOf(10); nl !== -1; nl = chunk.indexOf(10, start)) {
@@ -224,8 +230,9 @@ async function readRequests(
   files: string[],
   since: number | null,
   onProgress?: (done: number, total: number) => void,
-): Promise<{ requests: Map<string, Request>; sessionStart: Map<string, number> }> {
+): Promise<{ requests: Map<string, Request>; sessionStart: Map<string, number>; compactions: number }> {
   const requests = new Map<string, Request>();
+  let compactions = 0;
   // Earliest turn seen per session, inside the window or not, to tell when a session really began.
   const sessionStart = new Map<string, number>();
   const project = projectResolver();
@@ -241,6 +248,11 @@ async function readRequests(
       try {
         row = JSON.parse(line);
       } catch {
+        continue;
+      }
+      if (row?.subtype === 'compact_boundary') {
+        const t = Date.parse(row.timestamp);
+        if (!Number.isNaN(t) && (since === null || t >= since)) compactions++;
         continue;
       }
       const message = row?.message;
@@ -275,7 +287,7 @@ async function readRequests(
     }
   }
   onProgress?.(totalBytes, totalBytes);
-  return { requests, sessionStart };
+  return { requests, sessionStart, compactions };
 }
 
 export async function buildReport(opts: ReportOptions = {}): Promise<Report> {
@@ -292,7 +304,7 @@ export async function buildReport(opts: ReportOptions = {}): Promise<Report> {
 
   const dirs = opts.dirs ?? logDirs();
   const files = dirs.flatMap((d) => jsonlFiles(d));
-  const { requests, sessionStart } = await readRequests(files, since, opts.onProgress);
+  const { requests, sessionStart, compactions } = await readRequests(files, since, opts.onProgress);
   let oldestMs = Infinity;
   for (const f of files) oldestMs = Math.min(oldestMs, fs.statSync(f).mtimeMs);
 
@@ -319,6 +331,7 @@ export async function buildReport(opts: ReportOptions = {}): Promise<Report> {
     subagents: { cost: sub.reduce((n, r) => n + r.cost!, 0), requests: sub.length },
     unpriced: [...unpriced.entries()].map(([model, n]) => ({ model, requests: n })).sort((a, b) => b.requests - a.requests),
     files: files.length,
+    compactions,
     retention: { ...cleanupPeriod(), oldestLog: Number.isFinite(oldestMs) ? localDay(oldestMs) : null },
     ...(views ? { views } : {}),
   };
@@ -463,11 +476,30 @@ function finish(r: Report, out: string[]): string {
     out.push('');
     out.push(dim(`Subagents: ${usd(r.subagents.cost)} (${Math.round((r.subagents.cost / r.total.cost) * 100)}%) of this, counted in their parent session. By type: --by=agent`));
   }
+  if (r.compactions > 0) {
+    out.push('');
+    out.push(dim(`${r.compactions} context compaction${r.compactions === 1 ? '' : 's'} in this period. Claude Code doesn't log what the summary call costs, so it isn't in these totals.`));
+  }
   out.push(...retentionNote(r.retention));
-  out.push('');
-  out.push(`This is one machine. To see it for your whole team, per project and client, with up to 13 months of history:`);
-  out.push(`  ${bold('npx spendbyteam connect')}   ${dim(`(free for 3 developers · ${CTA_URL})`)}`);
   return out.join('\n');
+}
+
+/** Printed last, after the browser prompt, so it is the final thing on screen. */
+export function connectCta(env: NodeJS.ProcessEnv = process.env): string {
+  const lines = [
+    '',
+    `This is one machine. To see it for your whole team, per project and client, with up to 13 months of history:`,
+    `  ${bold('npx spendbyteam connect')}   ${dim(`(free for 3 developers · ${CTA_URL})`)}`,
+  ];
+  // Inside Claude Code (CLAUDECODE=1) the reader is Claude, usually through the plugin already.
+  if (!env.CLAUDECODE) {
+    lines.push(
+      '',
+      `Or ask Claude ("what did this branch cost?") with the Claude Code plugin:`,
+      `  ${bold('claude plugin install spendbyteam --marketplace spendbyteam/cli')}`,
+    );
+  }
+  return lines.join('\n');
 }
 
 function localDateTime(iso: string): string {
@@ -543,6 +575,7 @@ export async function report(opts: ReportOptions = {}): Promise<Report> {
   }
   console.log(opts.json ? JSON.stringify(r, null, 2) : renderReport(r));
   if (!opts.json && r.rows.length > 0 && (opts.web ?? opts.local ?? (await askToOpen(!!opts.local)))) openReport(r, !!opts.local);
+  if (!opts.json) console.log(connectCta());
   return r;
 }
 

@@ -25,7 +25,7 @@ Total         $1,086.20             112    2.4B
 **`report` makes no network calls at all.** (Opening the browser view loads a page from spendbyteam.com, see below; `--local` doesn't.) It only reads those files and prints a table; you can run it with Wi-Fi off. The network code in this package belongs to `connect` and `init`, and runs only when you call them. On a work laptop you may prefer to pin a version instead of pulling the latest each time:
 
 ```bash
-npx spendbyteam@0.5.0 report
+npx spendbyteam@0.5.1 report
 ```
 
 Costs use Anthropic's API list prices, including cache reads, 5-minute and 1-hour cache writes, and fast mode.

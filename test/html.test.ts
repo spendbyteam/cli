@@ -21,6 +21,7 @@ const base: Report = {
   total: { cost: 16.67, requests: 12, sessions: 3, tokens: 2_000_000 },
   unpriced: [],
   files: 2,
+  compactions: 0,
   retention: { days: 30, source: 'default', oldestLog: '2026-10-04' },
 };
 

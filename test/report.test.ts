@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildReport, cleanupPeriod, renderReport, retentionNote } from '../src/report.js';
+import { buildReport, cleanupPeriod, connectCta, renderReport, retentionNote } from '../src/report.js';
 import { costOf, normalizeModel, priceFor } from '../src/pricing.js';
 import { useTempHome } from './helpers.js';
 
@@ -225,7 +225,8 @@ describe('report', () => {
     writeLog(ctx.home, 'a.jsonl', [assistant({ id: 'm1' })]);
     const text = renderReport(await buildReport({ now: NOW }));
     expect(text).toMatch(/Total\s+\$4\.00/);
-    expect(text).toContain('spendbyteam.com');
+    expect(text).not.toContain('npx spendbyteam connect');
+    expect(connectCta()).toContain('spendbyteam.com');
   });
 
   it('warns that Claude Code deletes logs after 30 days by default, with the oldest log date', async () => {
@@ -259,5 +260,37 @@ describe('report', () => {
   it('rejects a bad --days or --by', async () => {
     await expect(buildReport({ now: NOW, days: 0 })).rejects.toThrow('--days');
     await expect(buildReport({ now: NOW, by: 'team' as never })).rejects.toThrow('--by');
+  });
+});
+
+describe('connectCta', () => {
+  it('points at connect and is not part of the rendered table', () => {
+    expect(connectCta()).toContain('npx spendbyteam connect');
+  });
+});
+
+describe('compactions', () => {
+  const ctx = useTempHome();
+  it('counts compaction markers in the window and says their cost is not included', async () => {
+    const dir = path.join(ctx.home, '.claude', 'projects', 'p');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 's.jsonl'), [
+      JSON.stringify({ type: 'system', subtype: 'compact_boundary', timestamp: new Date().toISOString(), sessionId: 's' }),
+      JSON.stringify({ type: 'system', subtype: 'compact_boundary', timestamp: '2001-01-01T00:00:00Z', sessionId: 's' }),
+      JSON.stringify({ type: 'assistant', timestamp: new Date().toISOString(), sessionId: 's', requestId: 'r1', message: { id: 'm1', model: 'claude-opus-5-5', usage: { input_tokens: 1000, output_tokens: 100 } } }),
+    ].join('\n') + '\n');
+    const r = await buildReport({ dirs: [path.join(ctx.home, '.claude', 'projects')] });
+    expect(r.compactions).toBe(1);
+    expect(renderReport(r)).toContain('1 context compaction in this period');
+  });
+});
+
+describe('connectCta plugin line', () => {
+  it('suggests the Claude Code plugin in a normal terminal', () => {
+    expect(connectCta({})).toContain('claude plugin install spendbyteam --marketplace spendbyteam/cli');
+  });
+  it('leaves it out when Claude Code runs the CLI', () => {
+    expect(connectCta({ CLAUDECODE: '1' })).not.toContain('claude plugin install');
+    expect(connectCta({ CLAUDECODE: '1' })).toContain('npx spendbyteam connect');
   });
 });
