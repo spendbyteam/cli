@@ -57,6 +57,17 @@ If your organization sets `cleanupPeriodDays` in managed settings, that value wi
 | `--by=project\|model\|agent\|branch\|day\|session` | How to group (default `project`; sub-folders of a git repo count as one project). `agent` splits the main session from each subagent type (Explore, general-purpose, your own agents); subagent cost is also counted in its parent session. `session` lists your most expensive sessions with turns and the input / output / cache-write / cache-read split |
 | `--json` | Machine-readable output |
 
+## Claude Code plugin
+
+Ask Claude directly ("what did Claude Code cost me this week?", "which branch was most expensive?"):
+
+```bash
+claude plugin marketplace add spendbyteam/cli
+claude plugin install spendbyteam@spendbyteam
+```
+
+The plugin's `cost-report` skill runs `report` for you, and `connect` walks you through team tracking. See [plugin/README.md](plugin/README.md) for exactly what it runs and sends.
+
 ## Track it for the whole team
 
 ```bash

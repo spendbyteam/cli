@@ -1,0 +1,15 @@
+{
+  "name": "spendbyteam",
+  "description": "SpendByTeam: Claude Code cost reports and team spend tracking.",
+  "owner": {
+    "name": "SpendByTeam",
+    "email": "support@spendbyteam.com"
+  },
+  "plugins": [
+    {
+      "name": "spendbyteam",
+      "source": "./plugin",
+      "description": "See what Claude Code costs per project, model, branch or day, and track your team's spend on SpendByTeam."
+    }
+  ]
+}
