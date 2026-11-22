@@ -13,7 +13,7 @@ Tell the user in two or three lines what connecting does, and get a yes:
 
 - It turns on Claude Code's built-in OpenTelemetry **metrics only** (cost, tokens, sessions, lines of code) and sends them to `https://ingest.spendbyteam.com`. Log events and traces stay off, so **no prompts, code, file contents or file paths** are sent.
 - It edits `~/.claude/settings.json` (a backup is kept as `settings.json.bak`) and writes `~/.spendbyteam/config.json` with a write-only ingest token.
-- This plugin's hook then sends the git remote, branch and ticket (e.g. `ABC-123` from the branch name) at session start, so cost can be split by branch and ticket.
+- It installs `~/.spendbyteam/hook.sh`, which sends the git remote, branch and ticket (e.g. `ABC-123` from the branch name) at session start, so cost can be split by branch and ticket.
 
 Full list of what leaves the machine: https://github.com/spendbyteam/cli#what-gets-sent
 
@@ -49,4 +49,4 @@ Undoes everything `connect`/`init` changed in `settings.json`. Then the user can
 
 ## Team admins
 
-To roll out to a whole Team or Enterprise org without each developer running `connect`, `npx --yes spendbyteam@0.5.0 print-managed --token=sbt_ing_...` prints a managed-settings block. Developers still install this plugin for branch and ticket attribution.
+To roll out to a whole Team or Enterprise org without each developer running `connect`, `npx --yes spendbyteam@0.5.0 print-managed --token=sbt_ing_...` prints a managed-settings block. Developers still run `connect` (or `init`) once for branch and ticket attribution.

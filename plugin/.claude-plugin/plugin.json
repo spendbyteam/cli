@@ -1,8 +1,8 @@
 {
   "name": "spendbyteam",
   "displayName": "SpendByTeam",
-  "version": "0.1.0",
-  "description": "See what Claude Code costs per project, model, branch or day from your local session logs, and attribute your team's spend to git branches and tickets on SpendByTeam.",
+  "version": "0.2.0",
+  "description": "See what Claude Code costs per project, model, branch or day from your local session logs, and set up team spend tracking on SpendByTeam.",
   "author": {
     "name": "SpendByTeam",
     "email": "support@spendbyteam.com",
@@ -25,13 +25,5 @@
   "documentationUrl": "https://spendbyteam.com/docs/install",
   "supportUrl": "https://spendbyteam.com/docs",
   "privacyPolicyUrl": "https://spendbyteam.com/privacy",
-  "termsOfServiceUrl": "https://spendbyteam.com/terms",
-  "userConfig": {
-    "ingest_token": {
-      "type": "string",
-      "title": "SpendByTeam ingest token (optional)",
-      "description": "Write-only token (sbt_ing_...) from the SpendByTeam panel. Leave empty if you ran `npx spendbyteam connect`: the hook then reads ~/.spendbyteam/config.json. Without either, the hook sends nothing.",
-      "sensitive": true
-    }
-  }
+  "termsOfServiceUrl": "https://spendbyteam.com/terms"
 }
